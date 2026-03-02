@@ -9,14 +9,13 @@ import aiohttp
 from aiohttp import web
 import socket
 import traceback
-from typing import Optional
 
 # ==================== VERIFICAÇÃO DE INSTÂNCIA ÚNICA ====================
 def verificar_instancia_unica():
     try:
         if sys.platform == "win32":
             import win32event, win32api, winerror
-            mutex_name = "Bot_Jugadores_Slash_Unico"
+            mutex_name = "Bot_Jugadores_Unico"
             mutex = win32event.CreateMutex(None, False, mutex_name)
             if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
                 print("❌ ERRO: Já existe uma instância do bot rodando!")
@@ -24,7 +23,7 @@ def verificar_instancia_unica():
             return True
         else:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.bind('\0bot_jugadores_slash_unico')
+            sock.bind('\0bot_jugadores_unico')
             return True
     except Exception as e:
         if sys.platform != "win32" and isinstance(e, socket.error):
@@ -35,89 +34,50 @@ def verificar_instancia_unica():
 if not verificar_instancia_unica():
     sys.exit(1)
 
-# ==================== CONFIGURAÇÕES DO BOT ====================
+# ==================== CONFIGURAÇÕES ====================
 intents = discord.Intents.default()
+intents.message_content = True
 intents.members = True
 intents.guilds = True
-intents.message_content = False
 
-class SlashBot(commands.Bot):
+class MeuBot(commands.Bot):
     def __init__(self):
         super().__init__(
-            command_prefix='/',
+            command_prefix='!',
             intents=intents,
             help_command=None
         )
-        
-        # Dicionário para tracking de uso dos comandos
-        self.comando_uso = {}
-        
+    
     async def setup_hook(self):
-        """Configuração inicial"""
-        print("\n" + "=" * 60)
-        print("🔄 CONFIGURANDO SLASH COMMANDS")
-        print("=" * 60)
+        """Sincroniza os comandos quando o bot inicia"""
+        print("🔄 Sincronizando comandos...")
         
-        # Carregar todos os módulos
-        print("\n📦 Carregando módulos...")
-        await self.carregar_modulos()
-        
-        # Sincronizar comandos com o Discord
-        print("\n🔄 Sincronizando comandos...")
-        
+        # SINCRONIZAÇÃO GLOBAL - TODOS OS COMANDOS APARECERÃO
         try:
-            # Sincronização global
-            print("   → Sincronizando globalmente...")
-            global_commands = await self.tree.sync()
-            print(f"   ✅ {len(global_commands)} comandos sincronizados globalmente!")
+            # Comandos globais (aparecem em todos os servidores)
+            comandos = await self.tree.sync()
+            print(f"✅ {len(comandos)} comandos sincronizados GLOBALMENTE!")
             
+            # Listar comandos sincronizados
+            for cmd in comandos:
+                print(f"   → /{cmd.name}")
+                
         except Exception as e:
-            print(f"   ❌ Erro na sincronização: {e}")
-            traceback.print_exc()
-        
-        print("\n" + "=" * 60)
-        print("✅ CONFIGURAÇÃO CONCLUÍDA")
-        print("=" * 60)
-    
-    async def carregar_modulos(self):
-        """Carrega todos os módulos do bot"""
-        modulos = [
-            'modules.sets',
-            'modules.tickets',
-            'modules.config_cargos',
-            'modules.cargos',
-            'modules.painel_rec',
-            'modules.limpeza',
-            'modules.painel_hierarquia',
-            'modules.premios',
-        ]
-        
-        carregados = 0
-        for modulo in modulos:
+            print(f"❌ Erro na sincronização global: {e}")
+            
+            # TENTATIVA 2: Sincronizar com um servidor específico (mais rápido)
             try:
-                await self.load_extension(modulo)
-                print(f"   ✅ {modulo}")
-                carregados += 1
-            except Exception as e:
-                print(f"   ❌ {modulo}: {e}")
-        
-        print(f"\n   📊 Total: {carregados}/{len(modulos)} módulos carregados")
-    
-    def registrar_uso_comando(self, comando_nome: str, interaction: discord.Interaction) -> None:
-        """Registra uso de comando para estatísticas"""
-        guild_id = interaction.guild_id if interaction.guild_id else 0
-        
-        if guild_id not in self.comando_uso:
-            self.comando_uso[guild_id] = {}
-        
-        if comando_nome not in self.comando_uso[guild_id]:
-            self.comando_uso[guild_id][comando_nome] = 0
-        
-        self.comando_uso[guild_id][comando_nome] += 1
+                # Use um ID de servidor para testes (substitua pelo ID do seu servidor)
+                # guild = discord.Object(id=SEU_ID_DO_SERVIDOR_AQUI)  # ← COLOQUE AQUI
+                # comandos = await self.tree.sync(guild=guild)
+                # print(f"✅ {len(comandos)} comandos sincronizados no servidor de teste!")
+                pass
+            except:
+                pass
 
-bot = SlashBot()
+bot = MeuBot()
 
-# ==================== KEEP-ALIVE SERVER ====================
+# ==================== KEEP-ALIVE ====================
 class KeepAliveServer:
     def __init__(self):
         self.app = None
@@ -127,30 +87,13 @@ class KeepAliveServer:
         try:
             self.app = web.Application()
             
-            async def handle_home(request: web.Request) -> web.Response:
+            async def handle(request):
                 return web.Response(
-                    text=f"""🤖 Bot Discord Online - Slash Commands
-
-📊 Status:
-• Bot: {bot.user if bot.user else 'Desconectado'}
-• Servidores: {len(bot.guilds)}
-• Comandos: {len(bot.tree.get_commands()) if bot.tree else 0}
-
-💡 No Discord, digite / para ver os comandos!""",
+                    text="✅ Bot Online - Slash Commands Ativos!\nDigite / no Discord para ver os comandos.",
                     content_type='text/plain'
                 )
             
-            async def handle_health(request: web.Request) -> web.Response:
-                return web.json_response({
-                    "status": "online",
-                    "bot": str(bot.user) if bot.user else None,
-                    "guilds": len(bot.guilds),
-                    "commands": len(bot.tree.get_commands()) if bot.tree else 0,
-                    "timestamp": datetime.now().isoformat()
-                })
-            
-            self.app.router.add_get('/', handle_home)
-            self.app.router.add_get('/health', handle_health)
+            self.app.router.add_get('/', handle)
             
             self.runner = web.AppRunner(self.app)
             await self.runner.setup()
@@ -170,254 +113,132 @@ class KeepAliveServer:
 
 keep_alive = KeepAliveServer()
 
-# ==================== FUNÇÃO PARA REGISTRAR USO (SEM DECORATOR) ====================
-async def registrar_uso_comando(interaction: discord.Interaction) -> None:
-    """Registra uso de comando (chame esta função no início de cada comando)"""
-    if interaction.command:
-        bot.registrar_uso_comando(interaction.command.name, interaction)
-
-# ==================== COMANDOS PRINCIPAIS ====================
+# ==================== SLASH COMMANDS ====================
+# TODOS OS COMANDOS ABAIXO APARECERÃO NO /
 
 @bot.tree.command(name="help", description="📖 Mostra todos os comandos disponíveis")
-async def help_command(interaction: discord.Interaction, comando: Optional[str] = None):
-    """Comando de ajuda principal"""
-    await registrar_uso_comando(interaction)
-    
-    if comando:
-        # Buscar comando específico
-        cmd = None
-        for command in bot.tree.get_commands():
-            if command.name.lower() == comando.lower():
-                cmd = command
-                break
-        
-        if not cmd:
-            await interaction.response.send_message(
-                f"❌ Comando `{comando}` não encontrado!",
-                ephemeral=True
-            )
-            return
-        
-        embed = discord.Embed(
-            title=f"📖 Ajuda: /{cmd.name}",
-            description=cmd.description or "Sem descrição",
-            color=discord.Color.blue()
-        )
-        await interaction.response.send_message(embed=embed)
-        return
-    
-    # Listar todos os comandos
+async def help_slash(interaction: discord.Interaction):
+    """Comando /help"""
     embed = discord.Embed(
-        title=f"🤖 Comandos do {bot.user.name}",
-        description="Digite **/** no chat para ver todos os comandos com autocomplete!",
-        color=discord.Color.purple()
+        title="🤖 Comandos Disponíveis",
+        description="Lista de todos os comandos:",
+        color=discord.Color.blue()
     )
     
-    # Agrupar por categoria
-    categorias = {}
-    for cmd in bot.tree.get_commands():
-        categoria = cmd.module.split('.')[-1].capitalize() if cmd.module else "Geral"
-        if categoria not in categorias:
-            categorias[categoria] = []
-        categorias[categoria].append(cmd)
+    # Listar todos os comandos registrados
+    comandos = bot.tree.get_commands()
+    lista_comandos = []
+    for cmd in comandos:
+        lista_comandos.append(f"`/{cmd.name}` - {cmd.description}")
     
-    for categoria, comandos in sorted(categorias.items()):
-        lista = [f"`/{cmd.name}` - {cmd.description or '...'}" for cmd in sorted(comandos, key=lambda x: x.name)[:5]]
-        if len(comandos) > 5:
-            lista.append(f"*... e mais {len(comandos)-5} comandos*")
-        
-        embed.add_field(name=f"📁 {categoria}", value="\n".join(lista), inline=False)
+    embed.add_field(
+        name="📋 Comandos",
+        value="\n".join(lista_comandos),
+        inline=False
+    )
     
-    embed.set_footer(text=f"Total: {len(bot.tree.get_commands())} comandos")
-    
+    embed.set_footer(text=f"Total: {len(comandos)} comandos")
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ping", description="🏓 Verifica a latência do bot")
-async def ping_command(interaction: discord.Interaction):
-    """Comando ping"""
-    await registrar_uso_comando(interaction)
-    
+async def ping_slash(interaction: discord.Interaction):
+    """Comando /ping"""
     latency = round(bot.latency * 1000)
-    
-    # Escolher cor baseada na latência
-    if latency < 200:
-        cor = discord.Color.green()
-        status = "✅ Excelente"
-    elif latency < 500:
-        cor = discord.Color.orange()
-        status = "⚠️ Razoável"
-    else:
-        cor = discord.Color.red()
-        status = "❌ Ruim"
-    
-    embed = discord.Embed(
-        title="🏓 Pong!",
-        description=f"**Latência:** {latency}ms\n**Status:** {status}",
-        color=cor
-    )
-    
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(f"🏓 Pong! Latência: **{latency}ms**")
 
-@bot.tree.command(name="status", description="📊 Mostra status detalhado do bot")
-async def status_command(interaction: discord.Interaction):
-    """Comando status"""
-    await registrar_uso_comando(interaction)
-    
+@bot.tree.command(name="status", description="📊 Mostra o status do bot")
+async def status_slash(interaction: discord.Interaction):
+    """Comando /status"""
     embed = discord.Embed(
-        title="🤖 Status do Bot",
-        color=discord.Color.blue()
+        title="📊 Status do Bot",
+        color=discord.Color.green()
     )
     
-    embed.add_field(name="🏷️ Nome", value=bot.user.name, inline=True)
-    embed.add_field(name="🆔 ID", value=bot.user.id, inline=True)
+    embed.add_field(name="🤖 Nome", value=bot.user.name, inline=True)
     embed.add_field(name="📡 Ping", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="🏠 Servidores", value=len(bot.guilds), inline=True)
-    embed.add_field(name="📊 Comandos", value=len(bot.tree.get_commands()), inline=True)
     
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="comandos_stats", description="📈 Mostra estatísticas de uso dos comandos")
-@app_commands.default_permissions(administrator=True)
-async def stats_comandos(interaction: discord.Interaction):
-    """Mostra quais comandos são mais usados"""
-    await registrar_uso_comando(interaction)
-    
-    guild_id = interaction.guild_id
-    
-    if guild_id not in bot.comando_uso or not bot.comando_uso[guild_id]:
-        await interaction.response.send_message(
-            "📊 Nenhum comando foi usado ainda neste servidor!",
-            ephemeral=True
-        )
-        return
-    
-    # Ordenar por uso
-    top_comandos = sorted(bot.comando_uso[guild_id].items(), key=lambda x: x[1], reverse=True)[:10]
-    
+@bot.tree.command(name="info", description="ℹ️ Informações sobre o bot")
+async def info_slash(interaction: discord.Interaction):
+    """Comando /info"""
     embed = discord.Embed(
-        title="📊 Comandos Mais Usados",
-        description=f"No servidor **{interaction.guild.name}**",
-        color=discord.Color.gold()
+        title="ℹ️ Sobre o Bot",
+        description="Bot para comunidade Jugadores",
+        color=discord.Color.purple()
     )
     
-    stats = "\n".join([f"**{i}.** `/{cmd}` - {count} uso(s)" 
-                      for i, (cmd, count) in enumerate(top_comandos, 1)])
-    
-    embed.add_field(name="📈 Top 10", value=stats, inline=False)
-    
-    total_usos = sum(bot.comando_uso[guild_id].values())
-    embed.set_footer(text=f"Total de usos: {total_usos}")
+    embed.add_field(name="📌 Versão", value="1.0.0", inline=True)
+    embed.add_field(name="⚙️ Tipo", value="Slash Commands", inline=True)
     
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="debug_slash", description="🔧 Diagnóstico dos slash commands (admin)")
-@app_commands.default_permissions(administrator=True)
-async def debug_slash(interaction: discord.Interaction):
-    """Comando de diagnóstico para verificar registro dos comandos"""
-    
-    await interaction.response.defer(ephemeral=True)
-    
-    embed = discord.Embed(
-        title="🔧 Diagnóstico Slash Commands",
-        description="Verificando registro dos comandos...",
-        color=discord.Color.blue()
-    )
-    
-    # 1. Comandos locais (no bot)
-    local_commands = bot.tree.get_commands()
-    embed.add_field(
-        name="📦 Comandos no Bot",
-        value=f"**Total:** {len(local_commands)}\n" +
-              ", ".join([f"`{cmd.name}`" for cmd in local_commands[:10]]) +
-              ("..." if len(local_commands) > 10 else ""),
-        inline=False
-    )
-    
-    # 2. Comandos registrados globalmente
-    try:
-        global_commands = await bot.tree.fetch_commands()
-        embed.add_field(
-            name="🌍 Comandos Globais",
-            value=f"**Total:** {len(global_commands)}\n" +
-                  ", ".join([f"`{cmd.name}`" for cmd in global_commands[:10]]) +
-                  ("..." if len(global_commands) > 10 else ""),
-            inline=False
-        )
-    except Exception as e:
-        embed.add_field(name="🌍 Comandos Globais", value=f"❌ Erro: {e}", inline=False)
-    
-    # 3. Comandos neste servidor
-    try:
-        guild_commands = await bot.tree.fetch_commands(guild=interaction.guild)
-        embed.add_field(
-            name=f"📋 Comandos em {interaction.guild.name}",
-            value=f"**Total:** {len(guild_commands)}\n" +
-                  ", ".join([f"`{cmd.name}`" for cmd in guild_commands[:10]]) +
-                  ("..." if len(guild_commands) > 10 else ""),
-            inline=False
-        )
-    except Exception as e:
-        embed.add_field(name="📋 Comandos no Servidor", value=f"❌ Erro: {e}", inline=False)
-    
-    # 4. Dicas para aparecer em "Utilizados com frequência"
-    embed.add_field(
-        name="💡 Dicas para aparecer em 'Utilizados com frequência'",
-        value="• Use os comandos regularmente\n"
-              "• Quanto mais usar, mais rápido eles aparecem\n"
-              "• O Discord aprende com seu padrão de uso\n"
-              "• Pode levar alguns dias para o algoritmo se ajustar",
-        inline=False
-    )
-    
-    await interaction.followup.send(embed=embed)
+# EXEMPLO DE COMANDO /sets
+@bot.tree.command(name="sets", description="🎮 Sistema de sets")
+async def sets_slash(interaction: discord.Interaction):
+    """Comando /sets"""
+    await interaction.response.send_message("🎮 Comando /sets executado!")
+
+# EXEMPLO DE COMANDO /tickets
+@bot.tree.command(name="tickets", description="🎫 Sistema de tickets")
+async def tickets_slash(interaction: discord.Interaction):
+    """Comando /tickets"""
+    await interaction.response.send_message("🎫 Comando /tickets executado!")
+
+# EXEMPLO DE COMANDO /cargos
+@bot.tree.command(name="cargos", description="⚙️ Sistema de cargos")
+async def cargos_slash(interaction: discord.Interaction):
+    """Comando /cargos"""
+    await interaction.response.send_message("⚙️ Comando /cargos executado!")
+
+# EXEMPLO DE COMANDO /premios
+@bot.tree.command(name="premios", description="🏆 Sistema de prêmios")
+async def premios_slash(interaction: discord.Interaction):
+    """Comando /premios"""
+    await interaction.response.send_message("🏆 Comando /premios executado!")
 
 # ==================== EVENTOS ====================
-
 @bot.event
 async def on_ready():
-    print("\n" + "=" * 60)
+    print("\n" + "="*50)
     print("✅ BOT CONECTADO!")
-    print("=" * 60)
+    print("="*50)
     print(f"🤖 Nome: {bot.user.name}")
     print(f"🆔 ID: {bot.user.id}")
-    print(f"📡 Ping: {round(bot.latency * 1000)}ms")
     print(f"🏠 Servidores: {len(bot.guilds)}")
     print(f"📊 Comandos Registrados: {len(bot.tree.get_commands())}")
-    print("=" * 60)
+    print("="*50)
     
-    # Listar comandos
+    # Mostrar comandos registrados
     print("\n📋 Comandos disponíveis:")
-    for cmd in sorted(bot.tree.get_commands(), key=lambda x: x.name):
-        print(f"   /{cmd.name} - {cmd.description}")
+    for cmd in bot.tree.get_commands():
+        print(f"   → /{cmd.name}")
     
-    print("\n💡 Dica: No Discord, digite / para ver os comandos!")
-    print("=" * 60)
+    print("\n💡 Digite / no Discord para ver os comandos!")
     
     # Status personalizado
     await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.playing,
-            name=f"/help | {len(bot.guilds)} servidores"
-        )
+        activity=discord.Game(name=f"/help | {len(bot.guilds)} servidores")
     )
 
 @bot.event
-async def on_guild_join(guild: discord.Guild):
-    """Quando entra em novo servidor"""
-    print(f"📥 Novo servidor: {guild.name} ({guild.id})")
+async def on_guild_join(guild):
+    """Quando entra em um novo servidor"""
+    print(f"📥 Entrei no servidor: {guild.name}")
     
-    # Enviar mensagem de boas-vindas
+    # Tenta enviar mensagem de boas-vindas
     for channel in guild.text_channels:
         if channel.permissions_for(guild.me).send_messages:
             embed = discord.Embed(
-                title="👋 Olá!",
+                title="👋 Obrigado por me adicionar!",
                 description=(
-                    f"Obrigado por me adicionar ao **{guild.name}**!\n\n"
-                    f"📝 **Como usar:**\n"
-                    f"• Digite **/** no chat\n"
-                    f"• Meus comandos aparecerão automaticamente\n"
-                    f"• Use **/help** para ver todos os comandos\n\n"
-                    f"⚡ Os comandos podem levar alguns minutos para aparecer!"
+                    f"**Comandos disponíveis:**\n"
+                    f"Digite **/** no chat para ver todos os comandos!\n\n"
+                    f"📝 **Principais comandos:**\n"
+                    f"• `/help` - Ver todos os comandos\n"
+                    f"• `/ping` - Verificar latência\n"
+                    f"• `/status` - Status do bot"
                 ),
                 color=discord.Color.green()
             )
@@ -425,35 +246,37 @@ async def on_guild_join(guild: discord.Guild):
             break
 
 # ==================== TRATAMENTO DE ERROS ====================
-
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    """Tratamento de erros"""
-    
-    if isinstance(error, app_commands.CommandOnCooldown):
-        await interaction.response.send_message(
-            f"⏰ Calma! Espere {error.retry_after:.1f}s",
-            ephemeral=True
-        )
-    elif isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message(
-            "❌ Sem permissão!",
-            ephemeral=True
-        )
+    """Trata erros dos slash commands"""
+    if isinstance(error, app_commands.CommandNotFound):
+        await interaction.response.send_message("❌ Comando não encontrado!", ephemeral=True)
     else:
         print(f"❌ Erro: {error}")
         if not interaction.response.is_done():
-            await interaction.response.send_message(
-                f"❌ Erro: {error}",
-                ephemeral=True
-            )
+            await interaction.response.send_message(f"❌ Erro: {error}", ephemeral=True)
 
 # ==================== FUNÇÃO PRINCIPAL ====================
+async def load_modules():
+    """Carrega os módulos (se existirem)"""
+    modulos = [
+        'modules.sets',
+        'modules.tickets',
+        'modules.cargos',
+        'modules.premios',
+    ]
+    
+    for modulo in modulos:
+        try:
+            await bot.load_extension(modulo)
+            print(f"✅ Módulo carregado: {modulo}")
+        except Exception as e:
+            print(f"⚠️ Módulo não carregado: {modulo} - {e}")
 
 async def main():
-    print("\n" + "=" * 60)
-    print("🚀 INICIANDO BOT SLASH COMMANDS")
-    print("=" * 60)
+    print("\n" + "="*50)
+    print("🚀 INICIANDO BOT")
+    print("="*50)
     
     TOKEN = os.getenv('DISCORD_TOKEN')
     if not TOKEN:
@@ -461,10 +284,10 @@ async def main():
         sys.exit(1)
     
     # Iniciar keep-alive
-    try:
-        await keep_alive.start()
-    except Exception as e:
-        print(f"⚠️ Erro keep-alive: {e}")
+    await keep_alive.start()
+    
+    # Carregar módulos
+    await load_modules()
     
     # Conectar ao Discord
     try:
