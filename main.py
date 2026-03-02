@@ -78,7 +78,7 @@ class MeuBot(commands.Bot):
             
             print(f"\n✅ Comandos sincronizados em: {guild.name}")
             print(f"   📋 {len(comandos)} comandos:")
-            for cmd in comandos[:5]:  # Mostrar apenas os primeiros 5 para não poluir
+            for cmd in comandos[:5]:
                 print(f"      → /{cmd.name}")
             if len(comandos) > 5:
                 print(f"      ... e mais {len(comandos)-5} comandos")
@@ -226,23 +226,36 @@ async def help_command(interaction: discord.Interaction, comando: str = None):
     )
     
     # Agrupar comandos por categoria
-    categorias = {}
-    for cmd in bot.tree.get_commands(guild=interaction.guild):
-        if cmd.module:
-            categoria = cmd.module.split('.')[-1].capitalize()
-        else:
-            categoria = "Geral"
-        
-        if categoria not in categorias:
-            categorias[categoria] = []
-        categorias[categoria].append(cmd)
+    categorias = {
+        "Gerais": [],
+        "Sets": [],
+        "Tickets": [],
+        "Cargos": [],
+        "Recrutadores": [],
+        "Prêmios": [],
+        "Admin": []
+    }
     
-    for categoria, comandos in sorted(categorias.items()):
-        lista = [f"`/{cmd.name}` - {cmd.description or '...'}" for cmd in sorted(comandos, key=lambda x: x.name)[:5]]
-        if len(comandos) > 5:
-            lista.append(f"*... e mais {len(comandos)-5} comandos*")
-        
-        embed.add_field(name=f"📁 {categoria}", value="\n".join(lista), inline=False)
+    for cmd in bot.tree.get_commands(guild=interaction.guild):
+        if cmd.name in ["help", "ping", "status", "info", "servidores"]:
+            categorias["Gerais"].append(cmd)
+        elif cmd.name in ["sets", "aprovamento", "check_id", "sets_pendentes"]:
+            categorias["Sets"].append(cmd)
+        elif cmd.name in ["tickets", "setup_tickets", "verificar_acesso"]:
+            categorias["Tickets"].append(cmd)
+        elif cmd.name in ["cargos", "cargos_painel", "fixnick", "cargo_add", "cargo_remove"]:
+            categorias["Cargos"].append(cmd)
+        elif cmd.name in ["painel_rec", "rec_stats", "rec_reset"]:
+            categorias["Recrutadores"].append(cmd)
+        elif cmd.name in ["premio", "premios"]:
+            categorias["Prêmios"].append(cmd)
+        elif cmd.name in ["sync", "reload", "debug", "comandos_stats"]:
+            categorias["Admin"].append(cmd)
+    
+    for categoria, comandos in categorias.items():
+        if comandos:
+            lista = [f"`/{cmd.name}` - {cmd.description or '...'}" for cmd in sorted(comandos, key=lambda x: x.name)]
+            embed.add_field(name=f"📁 **{categoria}**", value="\n".join(lista), inline=False)
     
     embed.set_footer(text=f"Total: {len(bot.tree.get_commands(guild=interaction.guild))} comandos")
     
@@ -435,6 +448,113 @@ async def debug_command(interaction: discord.Interaction):
     
     await interaction.followup.send(embed=embed, ephemeral=True)
 
+# ==================== COMANDOS EXEMPLO (SETS, TICKETS, ETC) ====================
+
+@bot.tree.command(name="sets", description="🎮 Sistema de sets")
+async def sets_command(interaction: discord.Interaction):
+    """Comando /sets"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("🎮 Comando /sets executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="aprovamento", description="✅ Sistema de aprovamento de sets")
+async def aprovamento_command(interaction: discord.Interaction):
+    """Comando /aprovamento"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("✅ Comando /aprovamento executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="check_id", description="🔍 Verifica ID do FiveM")
+async def check_id_command(interaction: discord.Interaction):
+    """Comando /check_id"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("🔍 Comando /check_id executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="sets_pendentes", description="⏳ Mostra sets pendentes")
+async def sets_pendentes_command(interaction: discord.Interaction):
+    """Comando /sets_pendentes"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("⏳ Comando /sets_pendentes executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="tickets", description="🎫 Sistema de tickets")
+async def tickets_command(interaction: discord.Interaction):
+    """Comando /tickets"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("🎫 Comando /tickets executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="setup_tickets", description="⚙️ Configura sistema de tickets")
+@app_commands.default_permissions(administrator=True)
+async def setup_tickets_command(interaction: discord.Interaction):
+    """Comando /setup_tickets"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("⚙️ Comando /setup_tickets executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="verificar_acesso", description="🔐 Verifica acesso a tickets")
+async def verificar_acesso_command(interaction: discord.Interaction):
+    """Comando /verificar_acesso"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("🔐 Comando /verificar_acesso executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="cargos_painel", description="🎛️ Painel de gerenciamento de cargos")
+@app_commands.default_permissions(administrator=True)
+async def cargos_painel_command(interaction: discord.Interaction):
+    """Comando /cargos_painel"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("🎛️ Comando /cargos_painel executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="fixnick", description="🔄 Corrige o nickname de um usuário")
+async def fixnick_command(interaction: discord.Interaction, usuario: discord.Member = None):
+    """Comando /fixnick"""
+    await registrar_uso_comando(interaction)
+    member = usuario or interaction.user
+    await interaction.response.send_message(f"🔄 Corrigindo nickname de {member.mention}... (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="cargo_add", description="➕ Adiciona cargo a um usuário")
+@app_commands.default_permissions(administrator=True)
+async def cargo_add_command(interaction: discord.Interaction):
+    """Comando /cargo_add"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("➕ Comando /cargo_add executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="cargo_remove", description="➖ Remove cargo de um usuário")
+@app_commands.default_permissions(administrator=True)
+async def cargo_remove_command(interaction: discord.Interaction):
+    """Comando /cargo_remove"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("➖ Comando /cargo_remove executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="painel_rec", description="👥 Painel de recrutadores")
+@app_commands.default_permissions(administrator=True)
+async def painel_rec_command(interaction: discord.Interaction):
+    """Comando /painel_rec"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("👥 Comando /painel_rec executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="rec_stats", description="📊 Estatísticas de recrutadores")
+async def rec_stats_command(interaction: discord.Interaction):
+    """Comando /rec_stats"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("📊 Comando /rec_stats executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="rec_reset", description="🔄 Reseta estatísticas de recrutadores")
+@app_commands.default_permissions(administrator=True)
+async def rec_reset_command(interaction: discord.Interaction):
+    """Comando /rec_reset"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("🔄 Comando /rec_reset executado! (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="premio", description="🏆 Dá prêmio para um usuário")
+@app_commands.default_permissions(administrator=True)
+async def premio_command(interaction: discord.Interaction, usuario: discord.Member, tipo: str = None):
+    """Comando /premio"""
+    await registrar_uso_comando(interaction)
+    tipo_texto = f" do tipo `{tipo}`" if tipo else ""
+    await interaction.response.send_message(f"🏆 Dando prêmio{tipo_texto} para {usuario.mention}... (Sistema em desenvolvimento)")
+
+@bot.tree.command(name="premios", description="🏆 Lista os prêmios disponíveis")
+async def premios_list_command(interaction: discord.Interaction):
+    """Comando /premios"""
+    await registrar_uso_comando(interaction)
+    await interaction.response.send_message("🏆 Comando /premios executado! (Sistema em desenvolvimento)")
+
 # ==================== EVENTOS ====================
 @bot.event
 async def on_ready():
@@ -505,7 +625,6 @@ async def on_guild_remove(guild):
     """Quando sai de um servidor"""
     print(f"📤 Bot saiu do servidor: {guild.name} (ID: {guild.id})")
     
-    # Remover da lista de sincronizados
     if guild.id in bot.servidores_sincronizados:
         bot.servidores_sincronizados.remove(guild.id)
 
@@ -557,14 +676,8 @@ async def carregar_modulos():
     
     # Lista de módulos para carregar
     modulos = [
-        'modules.sets',
-        'modules.tickets',
-        'modules.cargos',          # Sistema de cargos com painel
         'modules.cargos_serv',     # Sistema de listagem de cargos do servidor
-        'modules.painel_rec',
-        'modules.limpeza',
-        'modules.painel_hierarquia',
-        'modules.premios',
+        # Outros módulos serão adicionados quando estiverem prontos
     ]
     
     carregados = 0
