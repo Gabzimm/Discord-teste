@@ -9,6 +9,7 @@ import aiohttp
 from aiohttp import web
 import socket
 import traceback
+from typing import Optional
 
 # ==================== VERIFICAÇÃO DE INSTÂNCIA ÚNICA ====================
 def verificar_instancia_unica():
@@ -38,7 +39,7 @@ if not verificar_instancia_unica():
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
-intents.message_content = False  # Não precisamos para slash commands
+intents.message_content = False
 
 class SlashBot(commands.Bot):
     def __init__(self):
@@ -52,30 +53,23 @@ class SlashBot(commands.Bot):
         self.comando_uso = {}
         
     async def setup_hook(self):
-        """Configuração inicial - CRÍTICO para slash commands aparecerem"""
+        """Configuração inicial"""
         print("\n" + "=" * 60)
         print("🔄 CONFIGURANDO SLASH COMMANDS")
         print("=" * 60)
         
-        # 1. Carregar todos os módulos
+        # Carregar todos os módulos
         print("\n📦 Carregando módulos...")
         await self.carregar_modulos()
         
-        # 2. Sincronizar comandos com o Discord
+        # Sincronizar comandos com o Discord
         print("\n🔄 Sincronizando comandos...")
         
         try:
-            # SINCRONIZAÇÃO GLOBAL (pode levar até 1 hora para aparecer para todos)
+            # Sincronização global
             print("   → Sincronizando globalmente...")
             global_commands = await self.tree.sync()
             print(f"   ✅ {len(global_commands)} comandos sincronizados globalmente!")
-            
-            # Para TESTES IMEDIATOS, descomente e configure com seu servidor de teste
-            # test_guild_id = 123456789012345678  # ← COLOQUE AQUI O ID DO SEU SERVIDOR DE TESTE
-            # test_guild = discord.Object(id=test_guild_id)
-            # self.tree.copy_global_to(guild=test_guild)
-            # guild_commands = await self.tree.sync(guild=test_guild)
-            # print(f"   ✅ {len(guild_commands)} comandos sincronizados com servidor de teste!")
             
         except Exception as e:
             print(f"   ❌ Erro na sincronização: {e}")
@@ -109,7 +103,7 @@ class SlashBot(commands.Bot):
         
         print(f"\n   📊 Total: {carregados}/{len(modulos)} módulos carregados")
     
-    def registrar_uso_comando(self, comando_nome, interaction):
+    def registrar_uso_comando(self, comando_nome: str, interaction: discord.Interaction) -> None:
         """Registra uso de comando para estatísticas"""
         guild_id = interaction.guild_id if interaction.guild_id else 0
         
@@ -133,7 +127,7 @@ class KeepAliveServer:
         try:
             self.app = web.Application()
             
-            async def handle_home(request):
+            async def handle_home(request: web.Request) -> web.Response:
                 return web.Response(
                     text=f"""🤖 Bot Discord Online - Slash Commands
 
@@ -146,7 +140,7 @@ class KeepAliveServer:
                     content_type='text/plain'
                 )
             
-            async def handle_health(request):
+            async def handle_health(request: web.Request) -> web.Response:
                 return web.json_response({
                     "status": "online",
                     "bot": str(bot.user) if bot.user else None,
@@ -176,26 +170,18 @@ class KeepAliveServer:
 
 keep_alive = KeepAliveServer()
 
-# ==================== DECORATOR PARA REGISTRAR USO ====================
-def registrar_uso():
-    """Decorator para registrar uso de comandos automaticamente"""
-    def decorator(func):
-        async def wrapper(interaction: discord.Interaction, *args, **kwargs):
-            # Registrar uso
-            if interaction.command:
-                bot.registrar_uso_comando(interaction.command.name, interaction)
-            
-            # Executar comando original
-            return await func(interaction, *args, **kwargs)
-        return wrapper
-    return decorator
+# ==================== FUNÇÃO PARA REGISTRAR USO (SEM DECORATOR) ====================
+async def registrar_uso_comando(interaction: discord.Interaction) -> None:
+    """Registra uso de comando (chame esta função no início de cada comando)"""
+    if interaction.command:
+        bot.registrar_uso_comando(interaction.command.name, interaction)
 
 # ==================== COMANDOS PRINCIPAIS ====================
 
 @bot.tree.command(name="help", description="📖 Mostra todos os comandos disponíveis")
-@registrar_uso()
-async def help_command(interaction: discord.Interaction, comando: str = None):
+async def help_command(interaction: discord.Interaction, comando: Optional[str] = None):
     """Comando de ajuda principal"""
+    await registrar_uso_comando(interaction)
     
     if comando:
         # Buscar comando específico
@@ -247,9 +233,10 @@ async def help_command(interaction: discord.Interaction, comando: str = None):
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ping", description="🏓 Verifica a latência do bot")
-@registrar_uso()
 async def ping_command(interaction: discord.Interaction):
     """Comando ping"""
+    await registrar_uso_comando(interaction)
+    
     latency = round(bot.latency * 1000)
     
     # Escolher cor baseada na latência
@@ -272,9 +259,10 @@ async def ping_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="status", description="📊 Mostra status detalhado do bot")
-@registrar_uso()
 async def status_command(interaction: discord.Interaction):
     """Comando status"""
+    await registrar_uso_comando(interaction)
+    
     embed = discord.Embed(
         title="🤖 Status do Bot",
         color=discord.Color.blue()
@@ -290,9 +278,9 @@ async def status_command(interaction: discord.Interaction):
 
 @bot.tree.command(name="comandos_stats", description="📈 Mostra estatísticas de uso dos comandos")
 @app_commands.default_permissions(administrator=True)
-@registrar_uso()
 async def stats_comandos(interaction: discord.Interaction):
     """Mostra quais comandos são mais usados"""
+    await registrar_uso_comando(interaction)
     
     guild_id = interaction.guild_id
     
@@ -414,7 +402,7 @@ async def on_ready():
     )
 
 @bot.event
-async def on_guild_join(guild):
+async def on_guild_join(guild: discord.Guild):
     """Quando entra em novo servidor"""
     print(f"📥 Novo servidor: {guild.name} ({guild.id})")
     
