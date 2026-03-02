@@ -1,11 +1,12 @@
 import discord
 from discord.ext import commands
-from discord import ui, ButtonStyle
+from discord import app_commands, ui, ButtonStyle
 import asyncio
 from datetime import datetime
 import re
+from typing import Optional
 
-# ========== CONFIGURAÇÃO SIMPLES (IGUAL AO BASE) ==========
+# ========== CONFIGURAÇÃO SIMPLES ==========
 NICKNAME_CONFIG = {
     "👑 | Lider | 00": "00 | {name} | {id}",
     "💎 | Lider | 01": "01 | {name} | {id}",
@@ -56,14 +57,14 @@ STAFF_ROLES = [
     "🎖️ | Sub Elite",
 ]
 
-# ========== FUNÇÃO DE NORMALIZAÇÃO ==========
+# ========== FUNÇÕES DE NORMALIZAÇÃO ==========
 def normalizar_nome(nome: str) -> str:
     """Remove todos os espaços do nome para comparação flexível"""
     if not nome:
         return ""
     return re.sub(r'\s+', '', nome)
 
-def get_cargo_por_nome_flexivel(guild, nome_busca):
+def get_cargo_por_nome_flexivel(guild: discord.Guild, nome_busca: str) -> Optional[discord.Role]:
     """Busca cargo ignorando diferenças de espaços no nome"""
     if not nome_busca:
         return None
@@ -77,7 +78,7 @@ def get_cargo_por_nome_flexivel(guild, nome_busca):
     
     return None
 
-def member_tem_cargo_flexivel(member, nome_cargo):
+def member_tem_cargo_flexivel(member: discord.Member, nome_cargo: str) -> bool:
     """Verifica se o membro tem um cargo ignorando espaços"""
     if not member or not nome_cargo:
         return False
@@ -91,35 +92,35 @@ def member_tem_cargo_flexivel(member, nome_cargo):
     
     return False
 
-# ========== FUNÇÕES AUXILIARES (IGUAL AO BASE) ==========
-def buscar_usuario_por_fivem_id(guild: discord.Guild, fivem_id: str) -> discord.Member:
-    """Busca usuário pelo ID do FiveM no nickname"""
-    for member in guild.members:
-        if member.nick:
-            # Padrão: " | 123456" no final
-            if member.nick.endswith(f" | {fivem_id}"):
-                return member
+def is_staff(member: discord.Member) -> bool:
+    """Verifica se o membro é staff"""
+    if member.guild_permissions.administrator:
+        return True
     
-    return None
+    for role in member.roles:
+        for cargo_staff in STAFF_ROLES:
+            if normalizar_nome(role.name) == normalizar_nome(cargo_staff):
+                return True
+    
+    return False
 
-def extrair_parte_nickname(nickname: str):
+# ========== FUNÇÕES DE NICKNAME ==========
+def extrair_parte_nickname(nickname: str) -> str:
     """Extrai a parte do nome do usuário (segunda parte após o primeiro ' | ')"""
     if not nickname:
         return "User"
     
-    # Padrão: "PREFIXO | NOME | ID"
     partes = nickname.split(' | ')
     if len(partes) >= 2:
         return partes[1].strip()
     
     return nickname.strip()
 
-def extrair_id_fivem(nickname: str):
+def extrair_id_fivem(nickname: str) -> Optional[str]:
     """Extrai ID do FiveM do nickname (último número após o último ' | ')"""
     if not nickname:
         return None
     
-    # Padrão: "PREFIXO | NOME | ID"
     partes = nickname.split(' | ')
     if len(partes) >= 3:
         ultima_parte = partes[-1].strip()
@@ -128,23 +129,17 @@ def extrair_id_fivem(nickname: str):
     
     return None
 
-async def atualizar_nickname(member: discord.Member):
-    """Atualiza nickname mantendo a estrutura igual ao BASE"""
+async def atualizar_nickname(member: discord.Member) -> bool:
+    """Atualiza nickname mantendo a estrutura"""
     try:
-        # Verificar permissões
         if not member.guild.me.guild_permissions.manage_nicknames:
             return False
         
-        # Extrair partes do nickname atual
         nickname_atual = member.nick or member.name
         parte_nome = extrair_parte_nickname(nickname_atual)
-        id_fivem = extrair_id_fivem(nickname_atual)
+        id_fivem = extrair_id_fivem(nickname_atual) or "000000"
         
-        # Se não tiver ID, usar placeholder
-        if not id_fivem:
-            id_fivem = "000000"
-        
-        # Encontrar cargo principal (usando busca flexível)
+        # Encontrar cargo principal
         cargo_principal = None
         for cargo_nome in ORDEM_PRIORIDADE:
             if member_tem_cargo_flexivel(member, cargo_nome):
@@ -154,39 +149,33 @@ async def atualizar_nickname(member: discord.Member):
         if not cargo_principal or cargo_principal not in NICKNAME_CONFIG:
             return False
         
-        # Gerar novo nickname
         template = NICKNAME_CONFIG[cargo_principal]
         novo_nick = template.format(name=parte_nome, id=id_fivem)
         
-        # Limitar a 32 caracteres
         if len(novo_nick) > 32:
             novo_nick = novo_nick[:32]
         
-        # Aplicar se for diferente
         if member.nick != novo_nick:
             await member.edit(nick=novo_nick)
             return True
             
     except Exception as e:
-        print(f"Erro: {e}")
+        print(f"Erro ao atualizar nickname: {e}")
     
     return False
 
 # ========== SISTEMA DE SELEÇÃO DE CARGO ==========
 class CargoSelectView(ui.View):
-    """View simples para selecionar cargo"""
+    """View para selecionar cargo"""
     def __init__(self, member: discord.Member, action: str):
         super().__init__(timeout=60)
         self.member = member
-        self.action = action  # "add" ou "remove"
+        self.action = action
         
-        # Opções de cargo
         options = []
         for i, cargo_nome in enumerate(ORDEM_PRIORIDADE):
-            # Extrair prefixo para mostrar
             if " | " in cargo_nome:
-                partes = cargo_nome.split(' | ')
-                prefixo = partes[0] if len(partes) > 0 else cargo_nome
+                prefixo = cargo_nome.split(' | ')[0]
             else:
                 prefixo = cargo_nome
             
@@ -194,14 +183,14 @@ class CargoSelectView(ui.View):
                 discord.SelectOption(
                     label=prefixo,
                     description=cargo_nome,
-                    value=str(i)  # ← USAR ÍNDICE COMO VALUE ÚNICO
+                    value=str(i)
                 )
             )
         
         self.select = ui.Select(
             placeholder="Selecione o cargo...",
             options=options,
-            custom_id="cargo_select"
+            custom_id=f"cargo_select_{action}"
         )
         self.select.callback = self.on_select
         self.add_item(self.select)
@@ -209,17 +198,12 @@ class CargoSelectView(ui.View):
     async def on_select(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        # Pegar o índice e converter para o nome do cargo
         index = int(self.select.values[0])
         cargo_nome = ORDEM_PRIORIDADE[index]
-        
-        # Usar busca flexível
         cargo = get_cargo_por_nome_flexivel(interaction.guild, cargo_nome)
         
         if not cargo:
-            msg = await interaction.followup.send("❌ Cargo não encontrado no servidor!", ephemeral=True)
-            await asyncio.sleep(5)
-            await msg.delete()
+            await interaction.followup.send("❌ Cargo não encontrado no servidor!", ephemeral=True)
             return
         
         try:
@@ -230,252 +214,142 @@ class CargoSelectView(ui.View):
                 await self.member.remove_roles(cargo)
                 mensagem = f"✅ Cargo `{cargo.name}` removido de {self.member.mention}"
             
-            # Atualizar nickname
             await atualizar_nickname(self.member)
-            
-            # Enviar mensagem temporária
-            msg = await interaction.followup.send(mensagem, ephemeral=False)
-            await asyncio.sleep(5)
-            await msg.delete()
-            
-            # Deletar a mensagem com o select também
-            await interaction.delete_original_response()
+            await interaction.followup.send(mensagem, ephemeral=False)
             
         except discord.Forbidden:
-            msg = await interaction.followup.send("❌ Sem permissão!", ephemeral=True)
-            await asyncio.sleep(5)
-            await msg.delete()
+            await interaction.followup.send("❌ Sem permissão!", ephemeral=True)
         except Exception as e:
-            msg = await interaction.followup.send(f"❌ Erro: {e}", ephemeral=True)
-            await asyncio.sleep(5)
-            await msg.delete()
+            await interaction.followup.send(f"❌ Erro: {e}", ephemeral=True)
 
-# ========== MODAL DE BUSCA (IGUAL AO BASE) ==========
-class SimpleCargoModal(ui.Modal, title="🎯 Gerenciar Cargo"):
-    """Modal simples para gerenciar cargo"""
+# ========== MODAL DE BUSCA ==========
+class CargoModal(ui.Modal, title="🎯 Gerenciar Cargo"):
+    """Modal para gerenciar cargo"""
     
-    usuario_input = ui.TextInput(
-        label="Usuário (@nome ou número do FiveM):",
+    usuario = ui.TextInput(
+        label="Usuário (@menção ou ID do FiveM):",
         placeholder="Ex: @João ou 9237",
         required=True
     )
     
     def __init__(self, action: str):
         super().__init__()
-        self.action = action  # "add" ou "remove"
+        self.action = action
     
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        # Verificar se é staff (usando busca flexível)
-        is_staff = False
-        for role in interaction.user.roles:
-            for cargo_staff in STAFF_ROLES:
-                if normalizar_nome(role.name) == normalizar_nome(cargo_staff):
-                    is_staff = True
-                    break
-            if is_staff:
-                break
-        
-        if not is_staff and not interaction.user.guild_permissions.administrator:
-            msg = await interaction.followup.send("❌ Apenas staff pode usar!", ephemeral=True)
-            await asyncio.sleep(5)
-            await msg.delete()
+        if not is_staff(interaction.user):
+            await interaction.followup.send("❌ Apenas staff pode usar este comando!", ephemeral=True)
             return
         
-        # Encontrar usuário
+        # Buscar usuário
         member = None
-        input_text = self.usuario_input.value
+        input_text = self.usuario.value
         
-        try:
-            # 1. Se for menção (@usuário)
-            if "<@" in input_text:
-                user_id = input_text.replace("<@", "").replace(">", "").replace("!", "")
+        # Se for menção
+        if "<@" in input_text:
+            user_id = input_text.replace("<@", "").replace(">", "").replace("!", "")
+            try:
                 member = interaction.guild.get_member(int(user_id))
-            
-            # 2. Se for apenas números (ID do FiveM)
-            elif input_text.isdigit():
-                # Primeiro, buscar pelo ID do FiveM no nickname
-                member = buscar_usuario_por_fivem_id(interaction.guild, input_text)
-                
-                # Se não encontrou, buscar pelo ID do Discord
-                if not member:
-                    try:
-                        member = interaction.guild.get_member(int(input_text))
-                    except:
-                        pass
-            
-            # 3. Se for texto (nome)
-            else:
-                # Buscar por nome no nickname primeiro
-                for guild_member in interaction.guild.members:
-                    if guild_member.nick and input_text.lower() in guild_member.nick.lower():
-                        member = guild_member
-                        break
-                
-                # Se não encontrou no nickname, buscar no nome
-                if not member:
-                    for guild_member in interaction.guild.members:
-                        if input_text.lower() in guild_member.name.lower():
-                            member = guild_member
-                            break
-            
-            if not member:
-                embed = discord.Embed(
-                    title="❌ Usuário não encontrado!",
-                    description=(
-                        f"Não encontrei nenhum usuário com: `{input_text}`\n\n"
-                        "**Formas de buscar:**\n"
-                        "1. **Menção**: `@João`\n"
-                        "2. **ID do FiveM**: `9237` (deve estar no nickname)\n"
-                        "3. **Nome**: `João` ou parte do nome\n\n"
-                        "**📌 Exemplo de nickname com ID:**\n"
-                        "`M | João | 9237`"
-                    ),
-                    color=discord.Color.red()
-                )
-                msg = await interaction.followup.send(embed=embed, ephemeral=True)
-                await asyncio.sleep(8)
-                await msg.delete()
-                return
-            
-            # Extrair ID do FiveM do nickname
-            id_fivem = extrair_id_fivem(member.nick or member.name)
-            
-            # Criar embed simples
-            embed = discord.Embed(
-                title=f"{'➕ Adicionar' if self.action == 'add' else '➖ Remover'} Cargo",
-                description=(
-                    f"**Usuário:** {member.mention}\n"
-                    f"**Nickname atual:** `{member.nick or member.name}`\n"
-                    f"**ID FiveM:** `{id_fivem or 'Não encontrado'}`\n\n"
-                    f"Selecione o cargo abaixo:"
-                ),
-                color=discord.Color.blue() if self.action == "add" else discord.Color.red()
-            )
-            
-            # Mostrar view para selecionar cargo
-            view = CargoSelectView(member, self.action)
-            
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-            
-        except Exception as e:
-            embed = discord.Embed(
-                title="❌ Erro!",
-                description=f"Ocorreu um erro: `{str(e)}`",
-                color=discord.Color.red()
-            )
-            msg = await interaction.followup.send(embed=embed, ephemeral=True)
-            await asyncio.sleep(5)
-            await msg.delete()
+            except:
+                pass
+        
+        # Se for número (ID FiveM)
+        elif input_text.isdigit():
+            for guild_member in interaction.guild.members:
+                if guild_member.nick and guild_member.nick.endswith(f" | {input_text}"):
+                    member = guild_member
+                    break
+        
+        # Se for texto
+        else:
+            for guild_member in interaction.guild.members:
+                if guild_member.nick and input_text.lower() in guild_member.nick.lower():
+                    member = guild_member
+                    break
+                elif input_text.lower() in guild_member.name.lower():
+                    member = guild_member
+                    break
+        
+        if not member:
+            await interaction.followup.send(f"❌ Usuário `{input_text}` não encontrado!", ephemeral=True)
+            return
+        
+        # Criar embed
+        embed = discord.Embed(
+            title=f"{'➕ Adicionar' if self.action == 'add' else '➖ Remover'} Cargo",
+            description=(
+                f"**Usuário:** {member.mention}\n"
+                f"**Nickname:** `{member.nick or member.name}`\n"
+                f"**ID FiveM:** `{extrair_id_fivem(member.nick) or 'Não encontrado'}`\n\n"
+                f"Selecione o cargo abaixo:"
+            ),
+            color=discord.Color.green() if self.action == 'add' else discord.Color.red()
+        )
+        
+        view = CargoSelectView(member, self.action)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
-# ========== VIEW DO PAINEL (IGUAL AO BASE) ==========
-class CleanCargoView(ui.View):
-    """View clean do painel de cargos"""
+# ========== VIEW DO PAINEL ==========
+class PainelCargosView(ui.View):
+    """View principal do painel de cargos"""
     def __init__(self):
         super().__init__(timeout=None)
     
-    @ui.button(label="➕ Add Cargo", style=ButtonStyle.green, emoji="➕", custom_id="add_cargo_clean")
+    @ui.button(label="➕ Adicionar Cargo", style=ButtonStyle.green, emoji="➕", custom_id="painel_cargos_add")
     async def add_cargo(self, interaction: discord.Interaction, button: ui.Button):
-        # Verificar staff (usando busca flexível)
-        is_staff = False
-        for role in interaction.user.roles:
-            for cargo_staff in STAFF_ROLES:
-                if normalizar_nome(role.name) == normalizar_nome(cargo_staff):
-                    is_staff = True
-                    break
-            if is_staff:
-                break
-        
-        if not is_staff and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Apenas staff!", ephemeral=True)
+        if not is_staff(interaction.user):
+            await interaction.response.send_message("❌ Apenas staff pode usar este painel!", ephemeral=True)
             return
         
-        modal = SimpleCargoModal("add")
-        await interaction.response.send_modal(modal)
+        await interaction.response.send_modal(CargoModal("add"))
     
-    @ui.button(label="➖ Rem Cargo", style=ButtonStyle.red, emoji="➖", custom_id="remove_cargo_clean")
+    @ui.button(label="➖ Remover Cargo", style=ButtonStyle.red, emoji="➖", custom_id="painel_cargos_remove")
     async def remove_cargo(self, interaction: discord.Interaction, button: ui.Button):
-        # Verificar staff (usando busca flexível)
-        is_staff = False
-        for role in interaction.user.roles:
-            for cargo_staff in STAFF_ROLES:
-                if normalizar_nome(role.name) == normalizar_nome(cargo_staff):
-                    is_staff = True
-                    break
-            if is_staff:
-                break
-        
-        if not is_staff and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Apenas staff!", ephemeral=True)
+        if not is_staff(interaction.user):
+            await interaction.response.send_message("❌ Apenas staff pode usar este painel!", ephemeral=True)
             return
         
-        modal = SimpleCargoModal("remove")
-        await interaction.response.send_modal(modal)
+        await interaction.response.send_modal(CargoModal("remove"))
     
-    @ui.button(label="🔄 Corrigir Nick", style=ButtonStyle.blurple, emoji="🔄", custom_id="fix_nick_clean")
+    @ui.button(label="🔄 Corrigir Nick", style=ButtonStyle.blurple, emoji="🔄", custom_id="painel_cargos_fix")
     async def fix_nick(self, interaction: discord.Interaction, button: ui.Button):
-        # Verificar staff (usando busca flexível)
-        is_staff = False
-        for role in interaction.user.roles:
-            for cargo_staff in STAFF_ROLES:
-                if normalizar_nome(role.name) == normalizar_nome(cargo_staff):
-                    is_staff = True
-                    break
-            if is_staff:
-                break
-        
-        if not is_staff and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Apenas staff!", ephemeral=True)
+        if not is_staff(interaction.user):
+            await interaction.response.send_message("❌ Apenas staff pode usar este painel!", ephemeral=True)
             return
         
         await interaction.response.defer(ephemeral=True)
-        
         success = await atualizar_nickname(interaction.user)
         
         if success:
-            msg = await interaction.followup.send(f"✅ Nickname corrigido para `{interaction.user.nick}`", ephemeral=True)
+            await interaction.followup.send(f"✅ Nickname corrigido para `{interaction.user.nick}`", ephemeral=True)
         else:
-            msg = await interaction.followup.send("❌ Não foi possível corrigir o nickname", ephemeral=True)
-        
-        await asyncio.sleep(5)
-        await msg.delete()
+            await interaction.followup.send("❌ Não foi possível corrigir o nickname", ephemeral=True)
 
 # ========== COG PRINCIPAL ==========
 class CargosCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        print("✅ Sistema de Cargos carregado!")
+        print("✅ Cog de Cargos carregado!")
     
-    @commands.Cog.listener()
-    async def on_member_update(self, before, after):
-        """Atualiza nickname quando cargo muda"""
-        if before.roles != after.roles:
-            await asyncio.sleep(1)
-            await atualizar_nickname(after)
+    # ===== SLASH COMMANDS =====
     
-    @commands.Cog.listener()
-    async def on_ready(self):
-        """Carrega view persistente"""
-        self.bot.add_view(CleanCargoView())
-        print("✅ View de cargos carregada")
-    
-    @commands.command(name="setup_cargos")
-    @commands.has_permissions(administrator=True)
-    async def setup_cargos(self, ctx):
-        """Cria painel clean de cargos"""
+    @app_commands.command(name="cargos_painel", description="🎛️ Mostra o painel de gerenciamento de cargos")
+    @app_commands.default_permissions(administrator=True)
+    async def cargos_painel(self, interaction: discord.Interaction):
+        """Comando /cargos_painel - Cria o painel de cargos"""
         
         embed = discord.Embed(
             title="⚙️ SISTEMA DE CARGOS",
             description=(
                 "**Como funciona:**\n"
-                "1. Clique em Add ou Rem\n"
+                "1. Clique em Adicionar ou Remover\n"
                 "2. Digite @usuário ou ID do FiveM\n"
                 "3. Selecione o cargo\n"
                 "✅ Nickname atualiza automaticamente\n\n"
                 "**📌 Importante:**\n"
-                "• O nickname mantém a primeira parte\n"
-                "• ID do FiveM é preservado após ' | '\n"
+                "• O nickname mantém o nome e ID\n"
                 "• Apenas staff pode usar\n\n"
                 "**📌 Formato de Nickname:**\n"
                 "`Prefixo | Nome | ID`"
@@ -483,73 +357,111 @@ class CargosCog(commands.Cog):
             color=discord.Color.blue()
         )
         
-        # Exemplos de nickname
+        # Lista de cargos
+        cargos_lista = []
+        for cargo in ORDEM_PRIORIDADE:
+            if " | " in cargo:
+                prefixo = cargo.split(' | ')[0]
+                nome_completo = cargo
+                cargos_lista.append(f"• `{prefixo}` - {nome_completo}")
+            else:
+                cargos_lista.append(f"• `{cargo}`")
+        
         embed.add_field(
-            name="🎯 Exemplos de Nickname",
-            value=(
-                "• `00 | Torres | 9237`\n"
-                "• `01 | Torres | 9237`\n"
-                "• `02 | Torres | 9237`\n"
-                "• `03 | Torres | 9237`\n"
-                "• `G.Geral | Torres | 9237`\n"
-                "• `G.Farm | Torres | 9237`\n"
-                "• `G.Pista | Torres | 9237`\n"
-                "• `G.Rec | Torres | 9237`\n"
-                "• `Sup | Torres | 9237`\n"
-                "• `Rec | Torres | 9237`\n"
-                "• `Ceo E | Torres | 9237`\n"
-                "• `Sub E | Torres | 9237`\n"
-                "• `E | Torres | 9237`\n"
-                "• `M | Torres | 9237`"
-            ),
+            name="📋 Cargos Disponíveis",
+            value="\n".join(cargos_lista[:10]) + ("\n..." if len(cargos_lista) > 10 else ""),
             inline=False
         )
         
         embed.add_field(
-            name="👑 Staff Permitido",
-            value="\n".join([c.split(' | ')[0] if ' | ' in c else c for c in STAFF_ROLES[:6]]) + "\n...",
+            name="👑 Staff Autorizado",
+            value="\n".join([c.split(' | ')[0] for c in STAFF_ROLES[:8]]),
             inline=False
         )
         
-        embed.set_footer(text="Sistema Clean • Busca flexível • Mensagens auto-deletam em 5s")
+        embed.set_footer(text="Sistema de Cargos • Use os botões abaixo")
         
-        view = CleanCargoView()
-        
-        await ctx.send(embed=embed, view=view)
-        await ctx.message.delete()
+        view = PainelCargosView()
+        await interaction.response.send_message(embed=embed, view=view)
     
-    @commands.command(name="fixnick")
-    async def fixnick(self, ctx, member: discord.Member = None):
-        """Corrige nickname manualmente"""
-        if member is None:
-            member = ctx.author
+    @app_commands.command(name="cargo_add", description="➕ Adiciona um cargo a um usuário")
+    async def cargo_add(self, interaction: discord.Interaction, usuario: str):
+        """Comando /cargo_add - Atalho para adicionar cargo"""
+        if not is_staff(interaction.user):
+            await interaction.response.send_message("❌ Apenas staff pode usar este comando!", ephemeral=True)
+            return
         
-        # Verificar permissão (só staff pode corrigir outros) - usando busca flexível
-        if member != ctx.author:
-            is_staff = False
-            for role in ctx.author.roles:
-                for cargo_staff in STAFF_ROLES:
-                    if normalizar_nome(role.name) == normalizar_nome(cargo_staff):
-                        is_staff = True
-                        break
-                if is_staff:
-                    break
-            
-            if not is_staff and not ctx.author.guild_permissions.administrator:
-                await ctx.send("❌ Você não tem permissão para corrigir nickname de outros!", delete_after=5)
-                return
+        await interaction.response.send_modal(CargoModal("add"))
+    
+    @app_commands.command(name="cargo_remove", description="➖ Remove um cargo de um usuário")
+    async def cargo_remove(self, interaction: discord.Interaction, usuario: str):
+        """Comando /cargo_remove - Atalho para remover cargo"""
+        if not is_staff(interaction.user):
+            await interaction.response.send_message("❌ Apenas staff pode usar este comando!", ephemeral=True)
+            return
         
+        await interaction.response.send_modal(CargoModal("remove"))
+    
+    @app_commands.command(name="fixnick", description="🔄 Corrige o nickname de um usuário")
+    async def fixnick_slash(self, interaction: discord.Interaction, usuario: Optional[discord.Member] = None):
+        """Comando /fixnick - Corrige nickname"""
+        member = usuario or interaction.user
+        
+        if member != interaction.user and not is_staff(interaction.user):
+            await interaction.response.send_message("❌ Você só pode corrigir seu próprio nickname!", ephemeral=True)
+            return
+        
+        await interaction.response.defer(ephemeral=True)
         success = await atualizar_nickname(member)
         
         if success:
-            msg = await ctx.send(f"✅ Nickname de {member.mention} corrigido para `{member.nick}`")
+            await interaction.followup.send(f"✅ Nickname de {member.mention} corrigido para `{member.nick}`", ephemeral=True)
         else:
-            msg = await ctx.send(f"❌ Não foi possível corrigir o nickname de {member.mention}")
+            await interaction.followup.send(f"❌ Não foi possível corrigir o nickname de {member.mention}", ephemeral=True)
+    
+    @app_commands.command(name="cargos_lista", description="📋 Mostra a lista de cargos disponíveis")
+    async def cargos_lista(self, interaction: discord.Interaction):
+        """Comando /cargos_lista - Mostra todos os cargos"""
         
-        await asyncio.sleep(5)
-        await msg.delete()
+        embed = discord.Embed(
+            title="📋 Lista de Cargos",
+            description="Hierarquia de cargos do servidor:",
+            color=discord.Color.gold()
+        )
+        
+        for i, cargo in enumerate(ORDEM_PRIORIDADE, 1):
+            if " | " in cargo:
+                prefixo = cargo.split(' | ')[0]
+                embed.add_field(
+                    name=f"{i}. {prefixo}",
+                    value=cargo,
+                    inline=True
+                )
+            else:
+                embed.add_field(
+                    name=f"{i}. {cargo}",
+                    value="‎",
+                    inline=True
+                )
+        
+        await interaction.response.send_message(embed=embed)
+    
+    # ===== EVENTOS =====
+    
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        """Atualiza nickname quando cargo muda"""
+        if before.roles != after.roles:
+            await asyncio.sleep(1)
+            await atualizar_nickname(after)
+    
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Registra views persistentes"""
+        self.bot.add_view(PainelCargosView())
+        print("✅ Views do sistema de cargos registradas!")
 
+# ===== SETUP =====
 async def setup(bot):
     await bot.add_cog(CargosCog(bot))
-    bot.add_view(CleanCargoView())
-    print("✅ Sistema de Cargos configurado com views persistentes!")
+    print("✅ Sistema de Cargos configurado com slash commands!")
