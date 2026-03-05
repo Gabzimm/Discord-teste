@@ -43,6 +43,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
+intents.voice_states = True  # Adicionar intent para voz
 
 class MeuBot(commands.Bot):
     def __init__(self):
@@ -57,6 +58,10 @@ class MeuBot(commands.Bot):
         
         # Tracking de uso dos comandos
         self.comando_uso = {}
+        
+        # Variável para controlar a conexão de voz
+        self.voz_conectada = False
+        self.canal_voz_alvo = "💜・𝐖𝐚𝐯𝐞𝐗"  # Nome do canal de voz
     
     async def setup_hook(self):
         """NÃO sincroniza automaticamente - espera o on_ready"""
@@ -119,6 +124,36 @@ class MeuBot(commands.Bot):
             self.comando_uso[guild_id][comando_nome] = 0
         
         self.comando_uso[guild_id][comando_nome] += 1
+    
+    async def conectar_ao_canal_voz(self):
+        """Conecta ao canal de voz '💜・𝐖𝐚𝐯𝐞𝐗'"""
+        
+        print("\n🔊 Procurando canal de voz '💜・𝐖𝐚𝐯𝐞𝐗'...")
+        
+        for guild in self.guilds:
+            # Procurar canal de voz com o nome exato
+            for channel in guild.voice_channels:
+                if channel.name == self.canal_voz_alvo:
+                    try:
+                        # Verificar permissões
+                        if not channel.permissions_for(guild.me).connect:
+                            print(f"❌ Sem permissão para conectar em {guild.name}")
+                            continue
+                        
+                        # Conectar ao canal
+                        voz = await channel.connect()
+                        self.voz_conectada = True
+                        print(f"✅ Conectado ao canal de voz '{channel.name}' em {guild.name}")
+                        
+                        # Opcional: Tocar um som de conexão
+                        # voz.play(discord.FFmpegPCMAudio('som_conexao.mp3'))
+                        
+                        return voz
+                    except Exception as e:
+                        print(f"❌ Erro ao conectar em {guild.name}: {e}")
+        
+        print("⚠️ Canal de voz '💜・𝐖𝐚𝐯𝐞𝐗' não encontrado ou inacessível")
+        return None
 
 bot = MeuBot()
 
@@ -141,6 +176,7 @@ class KeepAliveServer:
 • Servidores: {len(bot.guilds)}
 • Comandos: {len(bot.tree.get_commands()) if bot.tree else 0}
 • Sincronizados: {len(bot.servidores_sincronizados)}
+• Voz: {'✅ Conectado' if bot.voz_conectada else '❌ Desconectado'}
 
 💡 Digite / no Discord para ver os comandos!""",
                     content_type='text/plain'
@@ -157,7 +193,8 @@ class KeepAliveServer:
                     },
                     "servidores": len(bot.guilds),
                     "comandos": len(bot.tree.get_commands()) if bot.tree else 0,
-                    "sincronizados": len(bot.servidores_sincronizados)
+                    "sincronizados": len(bot.servidores_sincronizados),
+                    "voz_conectada": bot.voz_conectada
                 })
             
             self.app.router.add_get('/', handle_home)
@@ -302,6 +339,7 @@ async def status_command(interaction: discord.Interaction):
     embed.add_field(name="🏠 Servidores", value=len(bot.guilds), inline=True)
     embed.add_field(name="📊 Comandos", value=len(bot.tree.get_commands()), inline=True)
     embed.add_field(name="🔄 Sincronizados", value=len(bot.servidores_sincronizados), inline=True)
+    embed.add_field(name="🔊 Voz", value="✅ Conectado" if bot.voz_conectada else "❌ Desconectado", inline=True)
     
     await interaction.response.send_message(embed=embed)
 
@@ -328,6 +366,7 @@ async def info_command(interaction: discord.Interaction):
               "• Painel de Recrutadores\n"
               "• Sistema de Prêmios\n"
               "• Cargos do Servidor\n"
+              "• Conexão Automática à Voz\n"
               "• E muito mais...",
         inline=False
     )
@@ -436,6 +475,7 @@ async def debug_command(interaction: discord.Interaction):
     embed.add_field(name="🏠 Servidores", value=len(bot.guilds), inline=True)
     embed.add_field(name="📊 Comandos", value=len(bot.tree.get_commands()), inline=True)
     embed.add_field(name="🔄 Sincronizados", value=len(bot.servidores_sincronizados), inline=True)
+    embed.add_field(name="🔊 Voz", value="✅ Conectado" if bot.voz_conectada else "❌ Desconectado", inline=True)
     
     # Comandos neste servidor
     guild_commands = bot.tree.get_commands(guild=interaction.guild)
@@ -447,6 +487,36 @@ async def debug_command(interaction: discord.Interaction):
     )
     
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+# ==================== COMANDOS DE VOZ ====================
+
+@bot.tree.command(name="voz_conectar", description="🔊 Conecta ao canal de voz '💜・𝐖𝐚𝐯𝐞𝐗'")
+@app_commands.default_permissions(administrator=True)
+async def voz_conectar_command(interaction: discord.Interaction):
+    """Comando para conectar manualmente ao canal de voz"""
+    await interaction.response.defer(ephemeral=True)
+    
+    voz = await bot.conectar_ao_canal_voz()
+    
+    if voz:
+        await interaction.followup.send("✅ Conectado ao canal de voz!", ephemeral=True)
+    else:
+        await interaction.followup.send("❌ Não foi possível conectar ao canal de voz!", ephemeral=True)
+
+@bot.tree.command(name="voz_desconectar", description="🔇 Desconecta do canal de voz")
+@app_commands.default_permissions(administrator=True)
+async def voz_desconectar_command(interaction: discord.Interaction):
+    """Comando para desconectar do canal de voz"""
+    
+    if not bot.voice_clients:
+        await interaction.response.send_message("❌ Bot não está conectado a nenhum canal de voz!", ephemeral=True)
+        return
+    
+    for voz in bot.voice_clients:
+        await voz.disconnect()
+    
+    bot.voz_conectada = False
+    await interaction.response.send_message("✅ Desconectado do canal de voz!", ephemeral=True)
 
 # ==================== COMANDOS EXEMPLO (SETS, TICKETS, ETC) ====================
 
@@ -576,11 +646,19 @@ async def on_ready():
     # SINCRONIZAR AUTOMATICAMENTE TODOS OS SERVIDORES
     await bot.sincronizar_todos_servidores()
     
+    # CONECTAR AO CANAL DE VOZ
+    print("\n🔊 Tentando conectar ao canal de voz...")
+    await bot.conectar_ao_canal_voz()
+    
     # Status personalizado
+    status_text = f"/help | {len(bot.guilds)} servidores"
+    if bot.voz_conectada:
+        status_text += " | 🔊 Voz"
+    
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.playing,
-            name=f"/help | {len(bot.guilds)} servidores"
+            name=status_text
         )
     )
     
@@ -595,6 +673,10 @@ async def on_guild_join(guild):
     
     # Sincronizar comandos para o novo servidor automaticamente
     await bot.sincronizar_comandos(guild)
+    
+    # Tentar conectar ao canal de voz se ainda não estiver conectado
+    if not bot.voz_conectada:
+        await bot.conectar_ao_canal_voz()
     
     # Enviar mensagem de boas-vindas
     for channel in guild.text_channels:
@@ -627,6 +709,34 @@ async def on_guild_remove(guild):
     
     if guild.id in bot.servidores_sincronizados:
         bot.servidores_sincronizados.remove(guild.id)
+    
+    # Se não houver mais servidores, desconectar da voz
+    if len(bot.guilds) == 0 and bot.voz_conectada:
+        for voz in bot.voice_clients:
+            await voz.disconnect()
+        bot.voz_conectada = False
+        print("🔇 Desconectado da voz (sem servidores)")
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    """Monitora mudanças no estado de voz"""
+    if member == bot.user:
+        if after.channel is None:
+            # Bot foi desconectado
+            bot.voz_conectada = False
+            print("🔇 Bot foi desconectado do canal de voz")
+            
+            # Tentar reconectar após 5 segundos
+            await asyncio.sleep(5)
+            if not bot.voz_conectada:
+                print("🔄 Tentando reconectar ao canal de voz...")
+                await bot.conectar_ao_canal_voz()
+        elif before.channel != after.channel:
+            # Bot foi movido para outro canal
+            if after.channel.name == bot.canal_voz_alvo:
+                print(f"🔊 Bot movido para {after.channel.name}")
+            else:
+                print(f"⚠️ Bot movido para canal diferente: {after.channel.name}")
 
 # ==================== TRATAMENTO DE ERROS ====================
 @bot.tree.error
@@ -731,6 +841,7 @@ async def main():
         print("   Ative no Discord Developer Portal:")
         print("   - SERVER MEMBERS INTENT")
         print("   - MESSAGE CONTENT INTENT")
+        print("   - VOICE STATES INTENT (já ativado)")
         sys.exit(1)
     except KeyboardInterrupt:
         print("\n\n👋 Bot encerrado pelo usuário")
@@ -739,6 +850,11 @@ async def main():
         traceback.print_exc()
     finally:
         print("\n🧹 Limpando recursos...")
+        
+        # Desconectar da voz antes de fechar
+        for voz in bot.voice_clients:
+            await voz.disconnect()
+        
         await keep_alive.stop()
         await bot.close()
         print("✅ Recursos liberados. Até mais!")
