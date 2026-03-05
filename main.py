@@ -43,7 +43,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
-intents.voice_states = True  # Adicionar intent para voz
+intents.voice_states = True  # Importante para voz
 
 class MeuBot(commands.Bot):
     def __init__(self):
@@ -140,19 +140,26 @@ class MeuBot(commands.Bot):
                             print(f"❌ Sem permissão para conectar em {guild.name}")
                             continue
                         
+                        # Verificar se já está conectado em algum lugar
+                        for voz in self.voice_clients:
+                            if voz.guild == guild:
+                                if voz.channel == channel:
+                                    print(f"✅ Já conectado em {channel.name} em {guild.name}")
+                                    self.voz_conectada = True
+                                    return voz
+                                else:
+                                    await voz.disconnect()
+                        
                         # Conectar ao canal
                         voz = await channel.connect()
                         self.voz_conectada = True
                         print(f"✅ Conectado ao canal de voz '{channel.name}' em {guild.name}")
-                        
-                        # Opcional: Tocar um som de conexão
-                        # voz.play(discord.FFmpegPCMAudio('som_conexao.mp3'))
-                        
                         return voz
                     except Exception as e:
                         print(f"❌ Erro ao conectar em {guild.name}: {e}")
         
-        print("⚠️ Canal de voz '💜・𝐖𝐚𝐯𝐞𝐗' não encontrado ou inacessível")
+        if not self.voz_conectada:
+            print("⚠️ Canal de voz '💜・𝐖𝐚𝐯𝐞𝐗' não encontrado ou inacessível")
         return None
 
 bot = MeuBot()
@@ -286,7 +293,7 @@ async def help_command(interaction: discord.Interaction, comando: str = None):
             categorias["Recrutadores"].append(cmd)
         elif cmd.name in ["premio", "premios"]:
             categorias["Prêmios"].append(cmd)
-        elif cmd.name in ["sync", "reload", "debug", "comandos_stats"]:
+        elif cmd.name in ["sync", "debug", "comandos_stats", "modulos", "voz_conectar", "voz_desconectar"]:
             categorias["Admin"].append(cmd)
     
     for categoria, comandos in categorias.items():
@@ -439,6 +446,37 @@ async def stats_comandos(interaction: discord.Interaction):
     embed.set_footer(text=f"Total de usos: {total_usos}")
     
     await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="modulos", description="📋 Lista todos os módulos carregados")
+async def modulos_command(interaction: discord.Interaction):
+    """Comando para ver quais módulos estão carregados"""
+    
+    embed = discord.Embed(
+        title="📦 Módulos Carregados",
+        color=discord.Color.blue()
+    )
+    
+    # Listar cogs carregados
+    cogs_list = list(bot.cogs.keys())
+    if cogs_list:
+        embed.add_field(
+            name="✅ Cogs Ativos",
+            value="\n".join([f"• `{cog}`" for cog in cogs_list]),
+            inline=False
+        )
+    else:
+        embed.add_field(name="❌ Cogs", value="Nenhum cog carregado", inline=False)
+    
+    # Listar comandos disponíveis
+    comandos = bot.tree.get_commands()
+    embed.add_field(
+        name="📋 Comandos Disponíveis",
+        value="\n".join([f"• `/{cmd.name}`" for cmd in comandos[:15]]) + 
+              (f"\n... e mais {len(comandos)-15}" if len(comandos) > 15 else ""),
+        inline=False
+    )
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="sync", description="🔄 Força sincronização dos comandos (admin)")
 @app_commands.default_permissions(administrator=True)
@@ -646,8 +684,9 @@ async def on_ready():
     # SINCRONIZAR AUTOMATICAMENTE TODOS OS SERVIDORES
     await bot.sincronizar_todos_servidores()
     
-    # CONECTAR AO CANAL DE VOZ
+    # CONECTAR AO CANAL DE VOZ - AGUARDAR UM POUCO PARA GARANTIR QUE TUDO ESTÁ PRONTO
     print("\n🔊 Tentando conectar ao canal de voz...")
+    await asyncio.sleep(2)  # Pequena pausa para garantir
     await bot.conectar_ao_canal_voz()
     
     # Status personalizado
@@ -676,6 +715,7 @@ async def on_guild_join(guild):
     
     # Tentar conectar ao canal de voz se ainda não estiver conectado
     if not bot.voz_conectada:
+        await asyncio.sleep(1)
         await bot.conectar_ao_canal_voz()
     
     # Enviar mensagem de boas-vindas
@@ -735,8 +775,10 @@ async def on_voice_state_update(member, before, after):
             # Bot foi movido para outro canal
             if after.channel.name == bot.canal_voz_alvo:
                 print(f"🔊 Bot movido para {after.channel.name}")
+                bot.voz_conectada = True
             else:
                 print(f"⚠️ Bot movido para canal diferente: {after.channel.name}")
+                bot.voz_conectada = False
 
 # ==================== TRATAMENTO DE ERROS ====================
 @bot.tree.error
@@ -787,17 +829,20 @@ async def carregar_modulos():
     # Lista de módulos para carregar
     modulos = [
         'modules.cargos_serv',     # Sistema de listagem de cargos do servidor
-        # Outros módulos serão adicionados quando estiverem prontos
     ]
     
     carregados = 0
     for modulo in modulos:
         try:
+            print(f"🔄 Tentando carregar: {modulo}")
             await bot.load_extension(modulo)
-            print(f"   ✅ {modulo}")
+            print(f"   ✅ {modulo} carregado com sucesso!")
             carregados += 1
+        except FileNotFoundError:
+            print(f"   ❌ {modulo} - Arquivo não encontrado!")
         except Exception as e:
-            print(f"   ❌ {modulo}: {e}")
+            print(f"   ❌ Erro ao carregar {modulo}: {type(e).__name__} - {e}")
+            traceback.print_exc()
     
     print("\n" + "="*60)
     print(f"📊 TOTAL: {carregados}/{len(modulos)} módulos carregados")
@@ -841,7 +886,7 @@ async def main():
         print("   Ative no Discord Developer Portal:")
         print("   - SERVER MEMBERS INTENT")
         print("   - MESSAGE CONTENT INTENT")
-        print("   - VOICE STATES INTENT (já ativado)")
+        print("   - VOICE STATES INTENT")
         sys.exit(1)
     except KeyboardInterrupt:
         print("\n\n👋 Bot encerrado pelo usuário")
