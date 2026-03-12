@@ -43,7 +43,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
-intents.voice_states = True  # Importante para voz
+intents.voice_states = True  # IMPORTANTE: Necessário para voz
 
 class MeuBot(commands.Bot):
     def __init__(self):
@@ -126,40 +126,80 @@ class MeuBot(commands.Bot):
         self.comando_uso[guild_id][comando_nome] += 1
     
     async def conectar_ao_canal_voz(self):
-        """Conecta ao canal de voz '💜・𝐖𝐚𝐯𝐞𝐗'"""
+        """Conecta ao canal de voz '💜・𝐖𝐚𝐯𝐞𝐗' com debug completo"""
         
-        print("\n🔊 Procurando canal de voz '💜・𝐖𝐚𝐯𝐞𝐗'...")
+        print("\n" + "="*60)
+        print("🔊 INICIANDO CONEXÃO DE VOZ - DEBUG")
+        print("="*60)
         
-        for guild in self.guilds:
-            # Procurar canal de voz com o nome exato
-            for channel in guild.voice_channels:
-                if channel.name == self.canal_voz_alvo:
+        # Verificar se há servidores
+        if not self.guilds:
+            print("❌ Bot não está em nenhum servidor!")
+            return None
+        
+        print(f"📊 Total de servidores: {len(self.guilds)}")
+        
+        # Listar todos os servidores
+        for i, guild in enumerate(self.guilds, 1):
+            print(f"\n📋 Servidor {i}: {guild.name} (ID: {guild.id})")
+            print(f"   Membros: {guild.member_count}")
+            
+            # Listar canais de voz do servidor
+            canais_voz = guild.voice_channels
+            print(f"   🎤 Canais de voz disponíveis: {len(canais_voz)}")
+            
+            canal_encontrado = None
+            for channel in canais_voz:
+                # Verificar se o nome corresponde (ignorando formatação Unicode)
+                if self.canal_voz_alvo in channel.name or channel.name in self.canal_voz_alvo:
+                    canal_encontrado = channel
+                    print(f"   ✅ Canal encontrado: {channel.name}")
+                    
+                    # Verificar permissões
+                    permissoes = channel.permissions_for(guild.me)
+                    print(f"      • Permissão de conectar: {permissoes.connect}")
+                    print(f"      • Permissão de falar: {permissoes.speak}")
+                    print(f"      • Permissão de usar voz: {permissoes.use_voice_activation}")
+                    
+                    if not permissoes.connect:
+                        print(f"      ❌ Sem permissão de CONNECT para {channel.name}")
+                        continue
+                    
                     try:
-                        # Verificar permissões
-                        if not channel.permissions_for(guild.me).connect:
-                            print(f"❌ Sem permissão para conectar em {guild.name}")
-                            continue
-                        
                         # Verificar se já está conectado em algum lugar
                         for voz in self.voice_clients:
                             if voz.guild == guild:
                                 if voz.channel == channel:
-                                    print(f"✅ Já conectado em {channel.name} em {guild.name}")
+                                    print(f"      ✅ Já conectado em {channel.name}")
                                     self.voz_conectada = True
                                     return voz
                                 else:
+                                    print(f"      🔄 Desconectando de {voz.channel.name} para conectar no canal correto")
                                     await voz.disconnect()
                         
                         # Conectar ao canal
+                        print(f"      🔌 Tentando conectar a {channel.name}...")
                         voz = await channel.connect()
                         self.voz_conectada = True
-                        print(f"✅ Conectado ao canal de voz '{channel.name}' em {guild.name}")
+                        print(f"      ✅ CONECTADO com sucesso a {channel.name}!")
                         return voz
+                        
                     except Exception as e:
-                        print(f"❌ Erro ao conectar em {guild.name}: {e}")
+                        print(f"      ❌ Erro ao conectar: {type(e).__name__} - {e}")
+                        traceback.print_exc()
+            
+            if not canal_encontrado:
+                print(f"   ❌ Canal '{self.canal_voz_alvo}' não encontrado neste servidor")
         
         if not self.voz_conectada:
-            print("⚠️ Canal de voz '💜・𝐖𝐚𝐯𝐞𝐗' não encontrado ou inacessível")
+            print("\n❌ NÃO FOI POSSÍVEL CONECTAR EM NENHUM SERVIDOR!")
+            print("   Possíveis problemas:")
+            print("   1. O canal de voz não existe em nenhum servidor")
+            print("   2. O bot não tem permissão de CONNECT no canal")
+            print("   3. O bot não está com a intent VOICE_STATES ativada")
+            print("   4. O bot não tem permissão de entrar em canais de voz")
+        
+        print("="*60)
         return None
 
 bot = MeuBot()
@@ -232,6 +272,108 @@ async def registrar_uso_comando(interaction: discord.Interaction) -> None:
     if interaction.command:
         bot.registrar_uso_comando(interaction.command.name, interaction)
 
+# ==================== COMANDOS DE DIAGNÓSTICO DE VOZ ====================
+
+@bot.tree.command(name="voz_debug", description="🔊 Mostra diagnóstico completo da conexão de voz")
+async def voz_debug_command(interaction: discord.Interaction):
+    """Comando para diagnosticar problemas de voz"""
+    
+    embed = discord.Embed(
+        title="🔊 Diagnóstico de Voz",
+        description=f"Servidor: **{interaction.guild.name}**",
+        color=discord.Color.blue()
+    )
+    
+    # 1. Verificar intents
+    embed.add_field(
+        name="📌 Intents",
+        value=f"Voice States: {'✅' if bot.intents.voice_states else '❌'}",
+        inline=True
+    )
+    
+    # 2. Status da conexão atual
+    if bot.voice_clients:
+        for voz in bot.voice_clients:
+            embed.add_field(
+                name="🔊 Conexão Atual",
+                value=f"Conectado em: {voz.channel.mention}\nGuild: {voz.guild.name}",
+                inline=True
+            )
+    else:
+        embed.add_field(name="🔊 Conexão Atual", value="Desconectado", inline=True)
+    
+    # 3. Canal alvo
+    embed.add_field(
+        name="🎯 Canal Alvo",
+        value=f"`{bot.canal_voz_alvo}`",
+        inline=True
+    )
+    
+    # 4. Listar todos os canais de voz do servidor
+    canais_voz = interaction.guild.voice_channels
+    if canais_voz:
+        lista_canais = []
+        for channel in canais_voz:
+            permissoes = channel.permissions_for(interaction.guild.me)
+            connect = "✅" if permissoes.connect else "❌"
+            speak = "✅" if permissoes.speak else "❌"
+            
+            # Destacar o canal alvo
+            if bot.canal_voz_alvo in channel.name or channel.name in bot.canal_voz_alvo:
+                lista_canais.append(f"🔹 **{channel.name}** (ID: {channel.id})\n   Conectar: {connect} | Falar: {speak}")
+            else:
+                lista_canais.append(f"• {channel.name} (ID: {channel.id})\n  Conectar: {connect} | Falar: {speak}")
+        
+        embed.add_field(
+            name=f"📋 Canais de Voz ({len(canais_voz)})",
+            value="\n".join(lista_canais[:10]),
+            inline=False
+        )
+    else:
+        embed.add_field(name="📋 Canais de Voz", value="Nenhum canal de voz encontrado!", inline=False)
+    
+    # 5. Permissões do bot
+    permissoes_gerais = interaction.guild.me.guild_permissions
+    embed.add_field(
+        name="🔐 Permissões do Bot",
+        value=f"Conectar: {'✅' if permissoes_gerais.connect else '❌'}\n"
+              f"Falar: {'✅' if permissoes_gerais.speak else '❌'}\n"
+              f"Usar Voz: {'✅' if permissoes_gerais.use_voice_activation else '❌'}",
+        inline=True
+    )
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="voz_conectar", description="🔊 Conecta ao canal de voz '💜・𝐖𝐚𝐯𝐞𝐗'")
+@app_commands.default_permissions(administrator=True)
+async def voz_conectar_command(interaction: discord.Interaction):
+    """Comando para conectar manualmente ao canal de voz"""
+    await interaction.response.defer(ephemeral=True)
+    
+    voz = await bot.conectar_ao_canal_voz()
+    
+    if voz:
+        await interaction.followup.send(f"✅ Conectado ao canal de voz **{voz.channel.name}**!", ephemeral=True)
+    else:
+        await interaction.followup.send("❌ Não foi possível conectar ao canal de voz! Use `/voz_debug` para diagnosticar.", ephemeral=True)
+
+@bot.tree.command(name="voz_desconectar", description="🔇 Desconecta do canal de voz")
+@app_commands.default_permissions(administrator=True)
+async def voz_desconectar_command(interaction: discord.Interaction):
+    """Comando para desconectar do canal de voz"""
+    
+    if not bot.voice_clients:
+        await interaction.response.send_message("❌ Bot não está conectado a nenhum canal de voz!", ephemeral=True)
+        return
+    
+    for voz in bot.voice_clients:
+        guild_name = voz.guild.name
+        channel_name = voz.channel.name
+        await voz.disconnect()
+    
+    bot.voz_conectada = False
+    await interaction.response.send_message(f"✅ Desconectado de **{channel_name}** em **{guild_name}**!", ephemeral=True)
+
 # ==================== COMANDOS PRINCIPAIS ====================
 
 @bot.tree.command(name="help", description="📖 Mostra todos os comandos disponíveis")
@@ -277,6 +419,7 @@ async def help_command(interaction: discord.Interaction, comando: str = None):
         "Cargos": [],
         "Recrutadores": [],
         "Prêmios": [],
+        "Voz": [],
         "Admin": []
     }
     
@@ -287,13 +430,15 @@ async def help_command(interaction: discord.Interaction, comando: str = None):
             categorias["Sets"].append(cmd)
         elif cmd.name in ["tickets", "setup_tickets", "verificar_acesso"]:
             categorias["Tickets"].append(cmd)
-        elif cmd.name in ["cargos", "cargos_painel", "fixnick", "cargo_add", "cargo_remove"]:
+        elif cmd.name in ["cargos"]:
             categorias["Cargos"].append(cmd)
         elif cmd.name in ["painel_rec", "rec_stats", "rec_reset"]:
             categorias["Recrutadores"].append(cmd)
         elif cmd.name in ["premio", "premios"]:
             categorias["Prêmios"].append(cmd)
-        elif cmd.name in ["sync", "debug", "comandos_stats", "modulos", "voz_conectar", "voz_desconectar"]:
+        elif cmd.name in ["voz_debug", "voz_conectar", "voz_desconectar"]:
+            categorias["Voz"].append(cmd)
+        elif cmd.name in ["sync", "debug", "comandos_stats", "modulos"]:
             categorias["Admin"].append(cmd)
     
     for categoria, comandos in categorias.items():
@@ -526,36 +671,6 @@ async def debug_command(interaction: discord.Interaction):
     
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-# ==================== COMANDOS DE VOZ ====================
-
-@bot.tree.command(name="voz_conectar", description="🔊 Conecta ao canal de voz '💜・𝐖𝐚𝐯𝐞𝐗'")
-@app_commands.default_permissions(administrator=True)
-async def voz_conectar_command(interaction: discord.Interaction):
-    """Comando para conectar manualmente ao canal de voz"""
-    await interaction.response.defer(ephemeral=True)
-    
-    voz = await bot.conectar_ao_canal_voz()
-    
-    if voz:
-        await interaction.followup.send("✅ Conectado ao canal de voz!", ephemeral=True)
-    else:
-        await interaction.followup.send("❌ Não foi possível conectar ao canal de voz!", ephemeral=True)
-
-@bot.tree.command(name="voz_desconectar", description="🔇 Desconecta do canal de voz")
-@app_commands.default_permissions(administrator=True)
-async def voz_desconectar_command(interaction: discord.Interaction):
-    """Comando para desconectar do canal de voz"""
-    
-    if not bot.voice_clients:
-        await interaction.response.send_message("❌ Bot não está conectado a nenhum canal de voz!", ephemeral=True)
-        return
-    
-    for voz in bot.voice_clients:
-        await voz.disconnect()
-    
-    bot.voz_conectada = False
-    await interaction.response.send_message("✅ Desconectado do canal de voz!", ephemeral=True)
-
 # ==================== COMANDOS EXEMPLO (SETS, TICKETS, ETC) ====================
 
 @bot.tree.command(name="sets", description="🎮 Sistema de sets")
@@ -601,33 +716,12 @@ async def verificar_acesso_command(interaction: discord.Interaction):
     await registrar_uso_comando(interaction)
     await interaction.response.send_message("🔐 Comando /verificar_acesso executado! (Sistema em desenvolvimento)")
 
-@bot.tree.command(name="cargos_painel", description="🎛️ Painel de gerenciamento de cargos")
-@app_commands.default_permissions(administrator=True)
-async def cargos_painel_command(interaction: discord.Interaction):
-    """Comando /cargos_painel"""
+@bot.tree.command(name="cargos", description="📋 Mostra todos os cargos do servidor")
+async def cargos_command(interaction: discord.Interaction):
+    """Comando /cargos - Vem do módulo cargos_serv"""
+    # Este comando será substituído pelo módulo cargos_serv
     await registrar_uso_comando(interaction)
-    await interaction.response.send_message("🎛️ Comando /cargos_painel executado! (Sistema em desenvolvimento)")
-
-@bot.tree.command(name="fixnick", description="🔄 Corrige o nickname de um usuário")
-async def fixnick_command(interaction: discord.Interaction, usuario: discord.Member = None):
-    """Comando /fixnick"""
-    await registrar_uso_comando(interaction)
-    member = usuario or interaction.user
-    await interaction.response.send_message(f"🔄 Corrigindo nickname de {member.mention}... (Sistema em desenvolvimento)")
-
-@bot.tree.command(name="cargo_add", description="➕ Adiciona cargo a um usuário")
-@app_commands.default_permissions(administrator=True)
-async def cargo_add_command(interaction: discord.Interaction):
-    """Comando /cargo_add"""
-    await registrar_uso_comando(interaction)
-    await interaction.response.send_message("➕ Comando /cargo_add executado! (Sistema em desenvolvimento)")
-
-@bot.tree.command(name="cargo_remove", description="➖ Remove cargo de um usuário")
-@app_commands.default_permissions(administrator=True)
-async def cargo_remove_command(interaction: discord.Interaction):
-    """Comando /cargo_remove"""
-    await registrar_uso_comando(interaction)
-    await interaction.response.send_message("➖ Comando /cargo_remove executado! (Sistema em desenvolvimento)")
+    await interaction.response.send_message("📋 Comando /cargos será carregado pelo módulo cargos_serv!", ephemeral=True)
 
 @bot.tree.command(name="painel_rec", description="👥 Painel de recrutadores")
 @app_commands.default_permissions(administrator=True)
@@ -674,20 +768,39 @@ async def on_ready():
     print(f"📡 Ping: {round(bot.latency * 1000)}ms")
     print(f"🏠 Servidores: {len(bot.guilds)}")
     print(f"📊 Comandos Carregados: {len(bot.tree.get_commands())}")
+    print(f"🔊 Intent Voz: {'✅ Ativada' if bot.intents.voice_states else '❌ Desativada'}")
     print("="*60)
     
-    # Listar servidores
+    # Listar servidores com detalhes
     print("\n📋 Servidores conectados:")
     for i, guild in enumerate(bot.guilds, 1):
-        print(f"   {i}. {guild.name} - {guild.member_count} membros")
+        print(f"   {i}. {guild.name} (ID: {guild.id}) - {guild.member_count} membros")
+        # Mostrar canais de voz
+        canais_voz = guild.voice_channels
+        if canais_voz:
+            print(f"      🎤 Canais de voz: {len(canais_voz)}")
+            for channel in canais_voz[:3]:  # Mostrar apenas os primeiros 3
+                print(f"         • {channel.name}")
     
     # SINCRONIZAR AUTOMATICAMENTE TODOS OS SERVIDORES
     await bot.sincronizar_todos_servidores()
     
-    # CONECTAR AO CANAL DE VOZ - AGUARDAR UM POUCO PARA GARANTIR QUE TUDO ESTÁ PRONTO
-    print("\n🔊 Tentando conectar ao canal de voz...")
-    await asyncio.sleep(2)  # Pequena pausa para garantir
-    await bot.conectar_ao_canal_voz()
+    # CONECTAR AO CANAL DE VOZ
+    print("\n" + "="*60)
+    print("🔊 INICIANDO CONEXÃO AUTOMÁTICA DE VOZ")
+    print("="*60)
+    
+    # Aguardar um pouco para garantir que tudo está pronto
+    await asyncio.sleep(3)
+    
+    # Tentar conectar
+    voz = await bot.conectar_ao_canal_voz()
+    
+    if voz:
+        print(f"\n✅ CONEXÃO DE VOZ ESTABELECIDA COM SUCESSO em {voz.channel.name}!")
+    else:
+        print("\n❌ FALHA NA CONEXÃO DE VOZ!")
+        print("   Use o comando /voz_debug no Discord para diagnosticar.")
     
     # Status personalizado
     status_text = f"/help | {len(bot.guilds)} servidores"
@@ -701,7 +814,8 @@ async def on_ready():
         )
     )
     
-    print("\n🚀 Bot pronto para receber comandos!")
+    print("\n" + "="*60)
+    print("🚀 Bot pronto para receber comandos!")
     print("="*60)
 
 @bot.event
@@ -715,6 +829,7 @@ async def on_guild_join(guild):
     
     # Tentar conectar ao canal de voz se ainda não estiver conectado
     if not bot.voz_conectada:
+        print("   🔊 Tentando conectar à voz no novo servidor...")
         await asyncio.sleep(1)
         await bot.conectar_ao_canal_voz()
     
@@ -732,8 +847,7 @@ async def on_guild_join(guild):
                     f"• `/ping` - Verificar latência\n"
                     f"• `/status` - Status do bot\n"
                     f"• `/cargos` - Listar cargos do servidor\n"
-                    f"• `/sets` - Sistema de sets\n"
-                    f"• `/tickets` - Sistema de tickets"
+                    f"• `/voz_debug` - Diagnosticar voz\n"
                 ),
                 color=discord.Color.green()
             )
@@ -764,7 +878,7 @@ async def on_voice_state_update(member, before, after):
         if after.channel is None:
             # Bot foi desconectado
             bot.voz_conectada = False
-            print("🔇 Bot foi desconectado do canal de voz")
+            print(f"🔇 Bot foi desconectado do canal de voz em {before.channel.guild.name}")
             
             # Tentar reconectar após 5 segundos
             await asyncio.sleep(5)
@@ -774,10 +888,10 @@ async def on_voice_state_update(member, before, after):
         elif before.channel != after.channel:
             # Bot foi movido para outro canal
             if after.channel.name == bot.canal_voz_alvo:
-                print(f"🔊 Bot movido para {after.channel.name}")
+                print(f"🔊 Bot movido para {after.channel.name} em {after.channel.guild.name}")
                 bot.voz_conectada = True
             else:
-                print(f"⚠️ Bot movido para canal diferente: {after.channel.name}")
+                print(f"⚠️ Bot movido para canal diferente: {after.channel.name} em {after.channel.guild.name}")
                 bot.voz_conectada = False
 
 # ==================== TRATAMENTO DE ERROS ====================
@@ -840,6 +954,10 @@ async def carregar_modulos():
             carregados += 1
         except FileNotFoundError:
             print(f"   ❌ {modulo} - Arquivo não encontrado!")
+            print(f"      Certifique-se que o arquivo existe em: modules/{modulo.split('.')[-1]}.py")
+        except commands.ExtensionAlreadyLoaded:
+            print(f"   ⚠️ {modulo} já estava carregado")
+            carregados += 1
         except Exception as e:
             print(f"   ❌ Erro ao carregar {modulo}: {type(e).__name__} - {e}")
             traceback.print_exc()
