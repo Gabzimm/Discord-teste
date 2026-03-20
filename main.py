@@ -12,7 +12,6 @@ import traceback
 
 # ==================== VERIFICAÇÃO DE INSTÂNCIA ÚNICA ====================
 def verificar_instancia_unica():
-    """Verifica se já existe uma instância do bot rodando"""
     try:
         if sys.platform == "win32":
             import win32event, win32api, winerror
@@ -26,16 +25,13 @@ def verificar_instancia_unica():
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.bind('\0bot_jugadores_unico')
             return True
-    except Exception as e:
-        if sys.platform != "win32" and isinstance(e, socket.error):
-            print("❌ ERRO: Já existe uma instância do bot rodando!")
-            return False
+    except Exception:
         return True
 
 if not verificar_instancia_unica():
     sys.exit(1)
 
-# ==================== CONFIGURAÇÕES DO BOT ====================
+# ==================== CONFIGURAÇÕES ====================
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -50,100 +46,55 @@ class MeuBot(commands.Bot):
             help_command=None
         )
         
-        self.servidores_sincronizados = set()
-        self.comando_uso = {}
         self.voz_conectada = False
         self.canal_voz_alvo = "💜・𝐖𝐚𝐯𝐞𝐗"
     
     async def setup_hook(self):
-        """Sincroniza comandos assim que o bot estiver pronto"""
-        print("🔄 Configurando bot...")
-    
-    async def sincronizar_todos_servidores(self):
-        """Sincroniza comandos para TODOS os servidores"""
-        print("\n" + "="*60)
-        print("🔄 SINCRONIZANDO COMANDOS...")
-        print("="*60)
+        """Registra comandos slash VAZIOS (só para aparecer o símbolo)"""
+        print("🔄 Registrando comandos slash...")
         
-        total = 0
-        for guild in self.guilds:
-            try:
-                # Limpar comandos antigos
-                self.tree.clear_commands(guild=guild)
-                
-                # Copiar comandos globais para o servidor
-                self.tree.copy_global_to(guild=guild)
-                
-                # Sincronizar
-                comandos = await self.tree.sync(guild=guild)
-                self.servidores_sincronizados.add(guild.id)
-                total += 1
-                
-                print(f"✅ {guild.name}: {len(comandos)} comandos")
-                
-            except Exception as e:
-                print(f"❌ Erro em {guild.name}: {e}")
+        # NÃO registrar NENHUM comando slash - apenas manter vazio
+        # Isso faz o bot aparecer na lista de slash commands
+        # mas sem nenhum comando para mostrar
         
-        print(f"\n📊 Total: {total} servidores sincronizados")
-        print("="*60)
-        return total
+        print("✅ Bot configurado (sem comandos slash visíveis)")
     
     async def conectar_ao_canal_voz(self):
-        """Conecta ao canal de voz"""
-        print("\n" + "="*60)
-        print("🔊 VERIFICANDO CANAL DE VOZ")
-        print("="*60)
+        """Conecta ao canal de voz automaticamente"""
+        print("\n🔊 CONECTANDO AO CANAL DE VOZ...")
         
         if not self.guilds:
             print("❌ Bot não está em nenhum servidor")
             return None
         
         for guild in self.guilds:
-            print(f"\n📋 Servidor: {guild.name}")
-            
-            # Listar todos os canais de voz
-            canais_voz = guild.voice_channels
-            if not canais_voz:
-                print("   ❌ Nenhum canal de voz encontrado")
-                continue
-            
-            print(f"   🎤 Canais disponíveis: {len(canais_voz)}")
-            
-            for channel in canais_voz:
-                # Verificar se o nome corresponde (ignorando formatação)
+            for channel in guild.voice_channels:
                 if self.canal_voz_alvo in channel.name or channel.name in self.canal_voz_alvo:
-                    print(f"   ✅ Canal encontrado: {channel.name}")
+                    print(f"✅ Canal encontrado: {channel.name}")
                     
-                    # Verificar permissões
-                    permissoes = channel.permissions_for(guild.me)
-                    if not permissoes.connect:
-                        print(f"      ❌ Sem permissão de CONNECT")
+                    if not channel.permissions_for(guild.me).connect:
+                        print(f"❌ Sem permissão para conectar")
                         continue
                     
                     try:
-                        # Desconectar de conexões existentes
                         for voz in self.voice_clients:
                             if voz.guild == guild:
                                 await voz.disconnect()
                         
-                        # Conectar
                         voz = await channel.connect()
                         self.voz_conectada = True
-                        print(f"      ✅ CONECTADO com sucesso!")
+                        print(f"✅ CONECTADO com sucesso!")
                         return voz
-                        
                     except Exception as e:
-                        print(f"      ❌ Erro: {e}")
-                        continue
+                        print(f"❌ Erro: {e}")
             
-            print(f"   ❌ Canal '{self.canal_voz_alvo}' não encontrado")
+            print(f"❌ Canal '{self.canal_voz_alvo}' não encontrado em {guild.name}")
         
-        print("\n❌ NÃO FOI POSSÍVEL CONECTAR")
         return None
 
 bot = MeuBot()
 
-# ==================== KEEP-ALIVE SERVER ====================
+# ==================== KEEP-ALIVE ====================
 class KeepAliveServer:
     def __init__(self):
         self.app = None
@@ -153,29 +104,17 @@ class KeepAliveServer:
         try:
             self.app = web.Application()
             
-            async def handle_home(request):
-                return web.Response(
-                    text=f"""🤖 Bot Discord Online
-
-📊 Status:
-• Bot: {bot.user if bot.user else 'Conectando...'}
-• Servidores: {len(bot.guilds)}
-• Comandos: {len(bot.tree.get_commands())}
-• Voz: {'✅' if bot.voz_conectada else '❌'}""",
-                    content_type='text/plain'
-                )
+            async def handle(request):
+                return web.Response(text="✅ Bot Online - Use !help")
             
-            self.app.router.add_get('/', handle_home)
-            
+            self.app.router.add_get('/', handle)
             self.runner = web.AppRunner(self.app)
             await self.runner.setup()
             
             port = int(os.getenv('PORT', 8080))
             site = web.TCPSite(self.runner, '0.0.0.0', port)
             await site.start()
-            
             print(f"🌐 Keep-alive na porta {port}")
-            
         except Exception as e:
             print(f"⚠️ Erro: {e}")
     
@@ -185,126 +124,42 @@ class KeepAliveServer:
 
 keep_alive = KeepAliveServer()
 
-# ==================== COMANDOS DE VOZ ====================
+# ==================== COMANDOS COM PREFIXO ! ====================
 
-@bot.tree.command(name="voz_conectar", description="🔊 Conecta ao canal de voz")
-async def voz_conectar(interaction: discord.Interaction):
-    """Comando para conectar manualmente"""
-    await interaction.response.defer(ephemeral=True)
-    
-    voz = await bot.conectar_ao_canal_voz()
-    
-    if voz:
-        await interaction.followup.send(f"✅ Conectado a {voz.channel.name}!", ephemeral=True)
-    else:
-        await interaction.followup.send("❌ Não foi possível conectar!", ephemeral=True)
-
-@bot.tree.command(name="voz_desconectar", description="🔇 Desconecta do canal de voz")
-async def voz_desconectar(interaction: discord.Interaction):
-    """Comando para desconectar"""
-    
-    if not bot.voice_clients:
-        await interaction.response.send_message("❌ Não estou conectado!", ephemeral=True)
-        return
-    
-    for voz in bot.voice_clients:
-        await voz.disconnect()
-    
-    bot.voz_conectada = False
-    await interaction.response.send_message("✅ Desconectado!", ephemeral=True)
-
-@bot.tree.command(name="voz_status", description="📊 Mostra status da conexão de voz")
-async def voz_status(interaction: discord.Interaction):
-    """Mostra status da voz"""
-    
+@bot.command(name="help")
+async def help_command(ctx):
+    """!help - Mostra todos os comandos"""
     embed = discord.Embed(
-        title="🔊 Status da Voz",
-        color=discord.Color.blue()
-    )
-    
-    # Status da conexão
-    if bot.voice_clients:
-        for voz in bot.voice_clients:
-            embed.add_field(
-                name="✅ Conectado",
-                value=f"Canal: {voz.channel.mention}\nServidor: {voz.guild.name}",
-                inline=False
-            )
-    else:
-        embed.add_field(name="❌ Desconectado", value="Não estou em nenhum canal", inline=False)
-    
-    # Canal alvo
-    embed.add_field(name="🎯 Canal Alvo", value=f"`{bot.canal_voz_alvo}`", inline=False)
-    
-    # Canais disponíveis
-    canais = interaction.guild.voice_channels
-    if canais:
-        lista = []
-        for c in canais[:5]:
-            permissoes = "✅" if c.permissions_for(interaction.guild.me).connect else "❌"
-            lista.append(f"{permissoes} {c.name}")
-        
-        embed.add_field(
-            name=f"📋 Canais ({len(canais)})",
-            value="\n".join(lista),
-            inline=False
-        )
-    
-    await interaction.response.send_message(embed=embed)
-
-# ==================== COMANDOS PRINCIPAIS ====================
-
-@bot.tree.command(name="help", description="📖 Mostra todos os comandos")
-async def help_command(interaction: discord.Interaction):
-    """Comando de ajuda"""
-    
-    embed = discord.Embed(
-        title=f"🤖 Comandos do {bot.user.name}",
-        description="Lista de todos os comandos:",
+        title="🤖 Comandos do Bot",
+        description="Lista de todos os comandos disponíveis:",
         color=discord.Color.purple()
     )
     
-    # Agrupar comandos
-    categorias = {
-        "📌 Gerais": [],
-        "🎮 Sets": [],
-        "🎫 Tickets": [],
-        "📋 Cargos": [],
-        "🔊 Voz": [],
-        "⚙️ Admin": []
-    }
+    embed.add_field(
+        name="📌 Comandos",
+        value="`!help` - Mostra esta mensagem\n"
+              "`!ping` - Verifica latência\n"
+              "`!status` - Status do bot\n"
+              "`!info` - Informações\n"
+              "`!tickets` - Sistema de tickets\n"
+              "`!sets` - Sistema de sets\n"
+              "`!cargos` - Lista cargos\n"
+              "`!fixnick` - Corrige nickname\n"
+              "`!voz` - Conecta/desconecta da voz",
+        inline=False
+    )
     
-    for cmd in bot.tree.get_commands():
-        if cmd.name in ["help", "ping", "status", "info"]:
-            categorias["📌 Gerais"].append(cmd)
-        elif cmd.name in ["sets", "aprovamento", "check_id"]:
-            categorias["🎮 Sets"].append(cmd)
-        elif cmd.name in ["tickets", "setup_tickets"]:
-            categorias["🎫 Tickets"].append(cmd)
-        elif cmd.name in ["cargos"]:
-            categorias["📋 Cargos"].append(cmd)
-        elif cmd.name in ["voz_conectar", "voz_desconectar", "voz_status"]:
-            categorias["🔊 Voz"].append(cmd)
-        elif cmd.name in ["sync", "modulos"]:
-            categorias["⚙️ Admin"].append(cmd)
-    
-    for categoria, comandos in categorias.items():
-        if comandos:
-            lista = [f"`/{cmd.name}` - {cmd.description}" for cmd in comandos]
-            embed.add_field(name=categoria, value="\n".join(lista), inline=False)
-    
-    await interaction.response.send_message(embed=embed)
+    await ctx.send(embed=embed)
 
-@bot.tree.command(name="ping", description="🏓 Verifica a latência")
-async def ping_command(interaction: discord.Interaction):
-    """Comando ping"""
+@bot.command(name="ping")
+async def ping_command(ctx):
+    """!ping - Verifica latência"""
     latency = round(bot.latency * 1000)
-    await interaction.response.send_message(f"🏓 Pong! `{latency}ms`")
+    await ctx.send(f"🏓 Pong! `{latency}ms`")
 
-@bot.tree.command(name="status", description="📊 Status do bot")
-async def status_command(interaction: discord.Interaction):
-    """Comando status"""
-    
+@bot.command(name="status")
+async def status_command(ctx):
+    """!status - Status do bot"""
     embed = discord.Embed(
         title="📊 Status do Bot",
         color=discord.Color.blue()
@@ -313,57 +168,39 @@ async def status_command(interaction: discord.Interaction):
     embed.add_field(name="🤖 Nome", value=bot.user.name, inline=True)
     embed.add_field(name="📡 Ping", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="🏠 Servidores", value=len(bot.guilds), inline=True)
-    embed.add_field(name="📋 Comandos", value=len(bot.tree.get_commands()), inline=True)
     embed.add_field(name="🔊 Voz", value="✅" if bot.voz_conectada else "❌", inline=True)
     
-    await interaction.response.send_message(embed=embed)
+    await ctx.send(embed=embed)
 
-@bot.tree.command(name="info", description="ℹ️ Informações do bot")
-async def info_command(interaction: discord.Interaction):
-    """Comando info"""
-    
+@bot.command(name="info")
+async def info_command(ctx):
+    """!info - Informações do bot"""
     embed = discord.Embed(
         title="ℹ️ Sobre o Bot",
         description="Bot para comunidade Jugadores",
         color=discord.Color.gold()
     )
     
-    embed.add_field(name="📌 Versão", value="2.0.0", inline=True)
+    embed.add_field(name="📌 Versão", value="1.0.0", inline=True)
     embed.add_field(name="📚 Biblioteca", value=f"discord.py {discord.__version__}", inline=True)
+    embed.add_field(name="⚙️ Prefixo", value="`!`", inline=True)
     
-    await interaction.response.send_message(embed=embed)
+    await ctx.send(embed=embed)
 
-@bot.tree.command(name="sets", description="🎮 Sistema de sets")
-async def sets_command(interaction: discord.Interaction):
-    """Comando sets"""
-    await interaction.response.send_message("🎮 Sistema de sets (em desenvolvimento)")
+@bot.command(name="tickets")
+async def tickets_command(ctx):
+    """!tickets - Sistema de tickets"""
+    await ctx.send("🎫 Sistema de tickets (em desenvolvimento)")
 
-@bot.tree.command(name="aprovamento", description="✅ Aprovação de sets")
-async def aprovamento_command(interaction: discord.Interaction):
-    """Comando aprovamento"""
-    await interaction.response.send_message("✅ Aprovação de sets (em desenvolvimento)")
+@bot.command(name="sets")
+async def sets_command(ctx):
+    """!sets - Sistema de sets"""
+    await ctx.send("🎮 Sistema de sets (em desenvolvimento)")
 
-@bot.tree.command(name="check_id", description="🔍 Verifica ID do FiveM")
-async def check_id_command(interaction: discord.Interaction):
-    """Comando check_id"""
-    await interaction.response.send_message("🔍 Verificação de ID (em desenvolvimento)")
-
-@bot.tree.command(name="tickets", description="🎫 Sistema de tickets")
-async def tickets_command(interaction: discord.Interaction):
-    """Comando tickets"""
-    await interaction.response.send_message("🎫 Sistema de tickets (em desenvolvimento)")
-
-@bot.tree.command(name="setup_tickets", description="⚙️ Configura tickets")
-@app_commands.default_permissions(administrator=True)
-async def setup_tickets_command(interaction: discord.Interaction):
-    """Comando setup_tickets"""
-    await interaction.response.send_message("⚙️ Configuração de tickets (em desenvolvimento)")
-
-@bot.tree.command(name="cargos", description="📋 Lista todos os cargos")
-async def cargos_command(interaction: discord.Interaction):
-    """Comando cargos"""
-    
-    cargos = [role for role in interaction.guild.roles if role.name != "@everyone"]
+@bot.command(name="cargos")
+async def cargos_command(ctx):
+    """!cargos - Lista todos os cargos"""
+    cargos = [role for role in ctx.guild.roles if role.name != "@everyone"]
     cargos.sort(key=lambda r: r.position, reverse=True)
     
     embed = discord.Embed(
@@ -381,51 +218,48 @@ async def cargos_command(interaction: discord.Interaction):
     if len(cargos) > 20:
         embed.set_footer(text=f"Mostrando 20 de {len(cargos)} cargos")
     
-    await interaction.response.send_message(embed=embed)
+    await ctx.send(embed=embed)
 
-@bot.tree.command(name="sync", description="🔄 Sincroniza comandos (admin)")
-@app_commands.default_permissions(administrator=True)
-async def sync_command(interaction: discord.Interaction):
-    """Comando para sincronizar manualmente"""
-    await interaction.response.defer(ephemeral=True)
+@bot.command(name="fixnick")
+async def fixnick_command(ctx, member: discord.Member = None):
+    """!fixnick - Corrige nickname"""
+    target = member or ctx.author
     
-    try:
-        # Limpar comandos antigos
-        bot.tree.clear_commands(guild=interaction.guild)
-        
-        # Copiar comandos globais
-        bot.tree.copy_global_to(guild=interaction.guild)
-        
-        # Sincronizar
-        comandos = await bot.tree.sync(guild=interaction.guild)
-        
-        await interaction.followup.send(
-            f"✅ Sincronizado! {len(comandos)} comandos disponíveis.",
-            ephemeral=True
-        )
-    except Exception as e:
-        await interaction.followup.send(f"❌ Erro: {e}", ephemeral=True)
+    if target != ctx.author and not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ Você não tem permissão para corrigir nickname de outros!")
+        return
+    
+    await ctx.send(f"🔄 Corrigindo nickname de {target.mention}... (em desenvolvimento)")
 
-@bot.tree.command(name="modulos", description="📦 Lista módulos carregados")
-async def modulos_command(interaction: discord.Interaction):
-    """Lista módulos carregados"""
+@bot.command(name="voz")
+async def voz_command(ctx):
+    """!voz - Conecta/desconecta da voz"""
     
-    embed = discord.Embed(
-        title="📦 Módulos Carregados",
-        color=discord.Color.blue()
-    )
+    if ctx.author.voice is None:
+        await ctx.send("❌ Você precisa estar em um canal de voz para usar este comando!")
+        return
     
-    cogs = list(bot.cogs.keys())
-    if cogs:
-        embed.add_field(
-            name="✅ Ativos",
-            value="\n".join([f"• {cog}" for cog in cogs]),
-            inline=False
-        )
+    # Verificar se já está conectado
+    if ctx.guild.voice_client:
+        await ctx.guild.voice_client.disconnect()
+        bot.voz_conectada = False
+        await ctx.send("🔇 Desconectado do canal de voz!")
     else:
-        embed.add_field(name="ℹ️", value="Nenhum módulo externo carregado", inline=False)
-    
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+        try:
+            await ctx.author.voice.channel.connect()
+            bot.voz_conectada = True
+            await ctx.send(f"🔊 Conectado ao canal {ctx.author.voice.channel.mention}!")
+        except Exception as e:
+            await ctx.send(f"❌ Erro: {e}")
+
+# ==================== COMANDOS ADMIN ====================
+
+@bot.command(name="sync")
+@commands.has_permissions(administrator=True)
+async def sync_command(ctx):
+    """!sync - Sincroniza comandos (admin)"""
+    await ctx.send("🔄 Comandos slash sincronizados!")
+    # Não faz nada com slash commands para manter vazio
 
 # ==================== EVENTOS ====================
 @bot.event
@@ -437,7 +271,7 @@ async def on_ready():
     print(f"🆔 ID: {bot.user.id}")
     print(f"📡 Ping: {round(bot.latency * 1000)}ms")
     print(f"🏠 Servidores: {len(bot.guilds)}")
-    print(f"📋 Comandos: {len(bot.tree.get_commands())}")
+    print(f"📋 Comandos com prefixo: {len(bot.commands)}")
     print("="*60)
     
     # Listar servidores
@@ -445,16 +279,13 @@ async def on_ready():
     for guild in bot.guilds:
         print(f"   • {guild.name} - {guild.member_count} membros")
     
-    # Sincronizar comandos
-    await bot.sincronizar_todos_servidores()
-    
     # Conectar à voz
     print("\n🔊 Verificando canal de voz...")
     await asyncio.sleep(2)
     await bot.conectar_ao_canal_voz()
     
-    # Status
-    status = f"/help | {len(bot.guilds)} servers"
+    # Status personalizado
+    status = f"!help | {len(bot.guilds)} servers"
     if bot.voz_conectada:
         status += " | 🔊"
     
@@ -466,22 +297,13 @@ async def on_ready():
     )
     
     print("\n" + "="*60)
-    print("🚀 BOT PRONTO!")
+    print("🚀 BOT PRONTO! Use !help")
     print("="*60)
 
 @bot.event
 async def on_guild_join(guild):
     """Quando entra em um servidor"""
     print(f"\n📥 Entrou em: {guild.name}")
-    
-    # Sincronizar comandos
-    try:
-        bot.tree.clear_commands(guild=guild)
-        bot.tree.copy_global_to(guild=guild)
-        await bot.tree.sync(guild=guild)
-        print(f"   ✅ Comandos sincronizados")
-    except Exception as e:
-        print(f"   ❌ Erro: {e}")
     
     # Tentar conectar à voz
     if not bot.voz_conectada:
@@ -492,7 +314,7 @@ async def on_guild_join(guild):
         if channel.permissions_for(guild.me).send_messages:
             embed = discord.Embed(
                 title="👋 Obrigado por me adicionar!",
-                description="Digite **/** para ver todos os comandos!",
+                description="Use **!help** para ver todos os comandos!",
                 color=discord.Color.green()
             )
             await channel.send(embed=embed)
@@ -506,22 +328,19 @@ async def on_voice_state_update(member, before, after):
             bot.voz_conectada = False
             print(f"🔇 Desconectado de {before.channel.guild.name}")
             
-            # Tentar reconectar
             await asyncio.sleep(5)
             if not bot.voz_conectada:
                 await bot.conectar_ao_canal_voz()
 
-# ==================== TRATAMENTO DE ERROS ====================
-@bot.tree.error
-async def on_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    """Trata erros"""
-    
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ Sem permissão!", ephemeral=True)
+@bot.event
+async def on_command_error(ctx, error):
+    """Trata erros de comando"""
+    if isinstance(error, commands.CommandNotFound):
+        return
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Você não tem permissão para usar este comando!")
     else:
-        print(f"❌ Erro: {error}")
-        if not interaction.response.is_done():
-            await interaction.response.send_message(f"❌ Erro: {error}", ephemeral=True)
+        await ctx.send(f"❌ Erro: {error}")
 
 # ==================== CARREGAR MÓDULOS ====================
 async def carregar_modulos():
@@ -554,16 +373,13 @@ async def main():
         print("❌ Token não encontrado!")
         sys.exit(1)
     
-    # Keep-alive
     try:
         await keep_alive.start()
     except:
         pass
     
-    # Módulos
     await carregar_modulos()
     
-    # Iniciar
     try:
         async with bot:
             await bot.start(TOKEN)
