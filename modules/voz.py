@@ -12,6 +12,13 @@ class VozCog(commands.Cog):
     async def voz_conectar(self, ctx):
         """!voz_conectar - Conecta ao canal WaveX"""
         
+        # Verificar se o PyNaCl está instalado
+        try:
+            import nacl
+        except ImportError:
+            await ctx.send("❌ Biblioteca PyNaCl não instalada! Contate o administrador.")
+            return
+        
         # Procurar o canal pelo ID
         canal = ctx.guild.get_channel(self.canal_id)
         
@@ -28,6 +35,10 @@ class VozCog(commands.Cog):
             # Conectar
             await canal.connect()
             await ctx.send(f"✅ Conectado ao canal **{canal.name}**!")
+        except discord.errors.Forbidden:
+            await ctx.send("❌ Sem permissão para conectar neste canal!")
+        except discord.errors.ClientException:
+            await ctx.send("❌ Já estou conectado em algum lugar!")
         except Exception as e:
             await ctx.send(f"❌ Erro: {e}")
     
@@ -52,4 +63,4 @@ class VozCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(VozCog(bot))
-    print("✅ Sistema de Voz simples configurado!")
+    print("✅ Sistema de Voz configurado!")
