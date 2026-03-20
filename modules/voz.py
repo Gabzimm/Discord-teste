@@ -7,7 +7,8 @@ class VozCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.voz_conectada = False
-        self.canal_voz_alvo = "💜・𝐖𝐚𝐯𝐞𝐗"
+        self.canal_voz_alvo = "WaveX"  # Nome do canal
+        self.canal_voz_id = 1479257448010350673  # ID do canal WaveX
         self.tentativas_reconexao = 0
         self.max_tentativas = 5
         
@@ -15,6 +16,7 @@ class VozCog(commands.Cog):
         self.verificar_voz.start()
         
         print("🔊 Sistema de Voz carregado!")
+        print(f"🎯 Canal alvo: {self.canal_voz_alvo} (ID: {self.canal_voz_id})")
     
     def cog_unload(self):
         """Quando o cog é descarregado"""
@@ -38,7 +40,7 @@ class VozCog(commands.Cog):
         # Se não está conectado, tentar conectar
         if not self.voz_conectada:
             print("🔊 Verificando conexão de voz...")
-            await self.conectar_automatico()
+            await self.conectar_ao_canal_especifico()
     
     @verificar_voz.before_loop
     async def before_verificar_voz(self):
@@ -46,11 +48,11 @@ class VozCog(commands.Cog):
         await self.bot.wait_until_ready()
         print("✅ Verificação de voz iniciada!")
     
-    async def conectar_automatico(self):
-        """Conecta automaticamente ao canal de voz"""
+    async def conectar_ao_canal_especifico(self):
+        """Conecta diretamente ao canal WaveX pelo ID"""
         
         print("\n" + "="*50)
-        print("🔊 TENTANDO CONEXÃO AUTOMÁTICA")
+        print("🔊 TENTANDO CONEXÃO AO CANAL WaveX")
         print("="*50)
         
         if not self.bot.guilds:
@@ -60,55 +62,38 @@ class VozCog(commands.Cog):
         for guild in self.bot.guilds:
             print(f"\n📋 Servidor: {guild.name}")
             
-            # Listar todos os canais de voz
-            canais_voz = guild.voice_channels
-            if not canais_voz:
-                print(f"   ❌ Nenhum canal de voz encontrado")
-                continue
+            # Procurar canal pelo ID
+            canal = guild.get_channel(self.canal_voz_id)
             
-            print(f"   🎤 Canais disponíveis: {len(canais_voz)}")
-            for c in canais_voz:
-                print(f"      • {c.name}")
-            
-            # Procurar canal alvo (várias formas)
-            canal_encontrado = None
-            
-            # 1. Buscar por nome exato
-            for channel in canais_voz:
-                if channel.name == self.canal_voz_alvo:
-                    canal_encontrado = channel
-                    print(f"   ✅ Canal encontrado (exato): {channel.name}")
-                    break
-            
-            # 2. Buscar por "WaveX" (ignorando formatação)
-            if not canal_encontrado:
-                for channel in canais_voz:
-                    if "WaveX" in channel.name or "𝐖𝐚𝐯𝐞𝐗" in channel.name:
-                        canal_encontrado = channel
-                        print(f"   ✅ Canal encontrado (parcial): {channel.name}")
+            if not canal:
+                # Se não encontrar pelo ID, procurar pelo nome
+                for c in guild.voice_channels:
+                    if c.name == self.canal_voz_alvo:
+                        canal = c
+                        print(f"   ✅ Canal encontrado pelo nome: {c.name}")
                         break
             
-            # 3. Buscar por "Wave" 
-            if not canal_encontrado:
-                for channel in canais_voz:
-                    if "Wave" in channel.name:
-                        canal_encontrado = channel
-                        print(f"   ✅ Canal encontrado (Wave): {channel.name}")
-                        break
-            
-            if not canal_encontrado:
-                print(f"   ❌ Canal com 'WaveX' não encontrado")
-                print(f"   Dica: Use !voz_listar para ver todos os canais")
+            if not canal:
+                print(f"   ❌ Canal '{self.canal_voz_alvo}' não encontrado")
                 continue
+            
+            print(f"   🎤 Canal encontrado: {canal.name} (ID: {canal.id})")
             
             # Verificar permissões
-            permissoes = canal_encontrado.permissions_for(guild.me)
+            permissoes = canal.permissions_for(guild.me)
             print(f"   🔐 Permissões:")
             print(f"      • Conectar: {'✅' if permissoes.connect else '❌'}")
             print(f"      • Falar: {'✅' if permissoes.speak else '❌'}")
+            print(f"      • Ver Canal: {'✅' if permissoes.view_channel else '❌'}")
             
             if not permissoes.connect:
                 print(f"   ❌ Sem permissão CONNECT")
+                print(f"   💡 Dica: Dê permissão de 'Conectar' para o bot no canal {canal.name}")
+                continue
+            
+            if not permissoes.view_channel:
+                print(f"   ❌ Sem permissão para ver o canal")
+                print(f"   💡 Dica: Dê permissão de 'Ver Canal' para o bot")
                 continue
             
             # Desconectar se já estiver em outro canal
@@ -119,20 +104,20 @@ class VozCog(commands.Cog):
                     await asyncio.sleep(1)
             
             try:
-                # Conectar
-                print(f"   🔌 Conectando a {canal_encontrado.name}...")
-                voz = await canal_encontrado.connect(timeout=10.0, reconnect=True)
+                # Tentar conectar
+                print(f"   🔌 Conectando a {canal.name}...")
+                voz = await canal.connect(timeout=10.0, reconnect=True)
                 self.voz_conectada = True
                 self.tentativas_reconexao = 0
                 print(f"\n✅ CONECTADO com sucesso!")
-                print(f"   📌 Canal: {canal_encontrado.name}")
+                print(f"   📌 Canal: {canal.name}")
                 print(f"   🏠 Servidor: {guild.name}")
                 
                 # Atualizar status
                 await self.bot.change_presence(
                     activity=discord.Activity(
                         type=discord.ActivityType.playing,
-                        name=f"!help | 🔊 {canal_encontrado.name}"
+                        name=f"!help | 🔊 {canal.name}"
                     )
                 )
                 
@@ -143,6 +128,9 @@ class VozCog(commands.Cog):
             except asyncio.TimeoutError:
                 print(f"   ❌ Timeout ao conectar")
                 self.tentativas_reconexao += 1
+            except discord.errors.Forbidden:
+                print(f"   ❌ Acesso negado! Bot não tem permissão para entrar no canal")
+                print(f"   💡 Dica: Verifique se o bot tem permissão de 'Conectar' e 'Ver Canal'")
             except Exception as e:
                 print(f"   ❌ Erro: {type(e).__name__} - {e}")
                 self.tentativas_reconexao += 1
@@ -152,8 +140,28 @@ class VozCog(commands.Cog):
                     self.tentativas_reconexao = 0
                     return False
         
-        print("\n❌ NÃO FOI POSSÍVEL CONECTAR A NENHUM CANAL")
+        print("\n❌ NÃO FOI POSSÍVEL CONECTAR")
         return False
+    
+    async def conectar_ao_canal_do_usuario(self, ctx):
+        """Conecta ao canal onde o usuário está"""
+        if not ctx.author.voice:
+            return False
+        
+        canal = ctx.author.voice.channel
+        
+        try:
+            # Desconectar se já estiver conectado
+            if ctx.voice_client:
+                await ctx.voice_client.disconnect()
+                await asyncio.sleep(1)
+            
+            await canal.connect()
+            self.voz_conectada = True
+            return True
+        except Exception as e:
+            print(f"Erro ao conectar no canal do usuário: {e}")
+            return False
     
     async def desconectar(self):
         """Desconecta de todos os canais de voz"""
@@ -170,31 +178,31 @@ class VozCog(commands.Cog):
     
     @commands.command(name="voz_conectar")
     async def voz_conectar_comando(self, ctx):
-        """!voz_conectar - Conecta ao canal de voz"""
+        """!voz_conectar - Conecta ao canal WaveX"""
         
-        await ctx.send("🔊 Tentando conectar...")
+        await ctx.send("🔊 Tentando conectar ao canal WaveX...")
         
-        # Primeiro, tentar conectar ao canal do usuário
-        if ctx.author.voice:
-            canal = ctx.author.voice.channel
-            try:
-                # Desconectar se já estiver conectado
-                if ctx.voice_client:
-                    await ctx.voice_client.disconnect()
-                    await asyncio.sleep(1)
-                
-                await canal.connect()
-                self.voz_conectada = True
-                await ctx.send(f"✅ Conectado ao seu canal: {canal.mention}!")
-                return
-            except Exception as e:
-                print(f"Erro ao conectar no canal do usuário: {e}")
-        
-        # Se não conseguir ou usuário não está em canal, tentar conexão automática
-        if await self.conectar_automatico():
-            await ctx.send("✅ Conectado com sucesso!")
+        # Tentar conectar ao canal WaveX
+        if await self.conectar_ao_canal_especifico():
+            await ctx.send("✅ Conectado ao canal WaveX com sucesso!")
         else:
-            await ctx.send("❌ Falha na conexão! Use `!voz_listar` para ver os canais disponíveis.")
+            await ctx.send("❌ Falha na conexão! Use `!voz_debug` para verificar permissões.")
+    
+    @commands.command(name="voz_conectar_aqui")
+    async def voz_conectar_aqui_comando(self, ctx):
+        """!voz_conectar_aqui - Conecta ao canal onde você está"""
+        
+        if not ctx.author.voice:
+            await ctx.send("❌ Você precisa estar em um canal de voz para usar este comando!")
+            return
+        
+        canal = ctx.author.voice.channel
+        await ctx.send(f"🔊 Tentando conectar ao canal {canal.mention}...")
+        
+        if await self.conectar_ao_canal_do_usuario(ctx):
+            await ctx.send(f"✅ Conectado ao seu canal: {canal.mention}!")
+        else:
+            await ctx.send("❌ Falha na conexão!")
     
     @commands.command(name="voz_desconectar")
     async def voz_desconectar_comando(self, ctx):
@@ -229,6 +237,13 @@ class VozCog(commands.Cog):
         else:
             embed.add_field(name="❌ Status", value="Desconectado", inline=False)
         
+        # Canal alvo
+        embed.add_field(
+            name="🎯 Canal Alvo",
+            value=f"**WaveX** (ID: {self.canal_voz_id})",
+            inline=False
+        )
+        
         # Listar todos os canais de voz
         canais = ctx.guild.voice_channels
         if canais:
@@ -239,8 +254,8 @@ class VozCog(commands.Cog):
                 status = "✅" if permissoes.connect else "❌"
                 
                 # Destacar canal alvo
-                if "WaveX" in c.name or "𝐖𝐚𝐯𝐞𝐗" in c.name or "Wave" in c.name:
-                    lista.append(f"🎯 {status} **{c.name}**")
+                if c.id == self.canal_voz_id:
+                    lista.append(f"🎯 {status} **{c.name}** (ID: {c.id})")
                 else:
                     lista.append(f"   {status} {c.name}")
             
@@ -249,12 +264,6 @@ class VozCog(commands.Cog):
                 value="\n".join(lista),
                 inline=False
             )
-        
-        embed.add_field(
-            name="🎯 Canal Alvo",
-            value=f"Qualquer canal com 'WaveX' ou 'Wave' no nome",
-            inline=False
-        )
         
         await ctx.send(embed=embed)
     
@@ -279,7 +288,12 @@ class VozCog(commands.Cog):
             permissoes = c.permissions_for(ctx.guild.me)
             status = "✅" if permissoes.connect else "❌"
             membros = len(c.members)
-            lista.append(f"{status} **{c.name}** - {membros} membros (ID: {c.id})")
+            
+            # Destacar canal WaveX
+            if c.name == "WaveX" or c.id == self.canal_voz_id:
+                lista.append(f"🎯 {status} **{c.name}** - {membros} membros (ID: {c.id})")
+            else:
+                lista.append(f"   {status} {c.name} - {membros} membros (ID: {c.id})")
         
         embed.add_field(
             name=f"Total: {len(canais)} canais",
@@ -291,9 +305,9 @@ class VozCog(commands.Cog):
     
     @commands.command(name="voz_reconectar")
     async def voz_reconectar_comando(self, ctx):
-        """!voz_reconectar - Força reconexão ao canal alvo"""
+        """!voz_reconectar - Força reconexão ao canal WaveX"""
         
-        await ctx.send("🔄 Tentando reconectar...")
+        await ctx.send("🔄 Tentando reconectar ao canal WaveX...")
         
         # Desconectar se estiver conectado
         if ctx.voice_client:
@@ -301,10 +315,10 @@ class VozCog(commands.Cog):
             await asyncio.sleep(2)
         
         # Tentar conectar
-        if await self.conectar_automatico():
+        if await self.conectar_ao_canal_especifico():
             await ctx.send("✅ Reconectado com sucesso!")
         else:
-            await ctx.send("❌ Falha na reconexão! Use `!voz_listar` para ver os canais disponíveis.")
+            await ctx.send("❌ Falha na reconexão! Use `!voz_debug` para verificar permissões.")
     
     @commands.command(name="voz_debug")
     async def voz_debug_comando(self, ctx):
@@ -318,34 +332,58 @@ class VozCog(commands.Cog):
         # 1. Servidor
         embed.add_field(name="📌 Servidor", value=ctx.guild.name, inline=False)
         
-        # 2. Canais de voz
+        # 2. Canal alvo
+        canal_alvo = ctx.guild.get_channel(self.canal_voz_id)
+        if canal_alvo:
+            embed.add_field(
+                name="🎯 Canal Alvo",
+                value=f"**{canal_alvo.name}** (ID: {canal_alvo.id})\n"
+                      f"Tipo: {type(canal_alvo).__name__}",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="🎯 Canal Alvo",
+                value=f"Não encontrado! ID: {self.canal_voz_id}",
+                inline=False
+            )
+        
+        # 3. Canais de voz com permissões
         canais = ctx.guild.voice_channels
         if canais:
             lista = []
             for c in canais:
                 permissoes = c.permissions_for(ctx.guild.me)
                 connect = "✅" if permissoes.connect else "❌"
-                lista.append(f"{connect} **{c.name}** (ID: {c.id})")
+                view = "✅" if permissoes.view_channel else "❌"
+                
+                if c.id == self.canal_voz_id:
+                    lista.append(f"🎯 **{c.name}**")
+                    lista.append(f"   • Conectar: {connect}")
+                    lista.append(f"   • Ver Canal: {view}")
+                    lista.append(f"   • Membros: {len(c.members)}")
+                    lista.append("")
+                else:
+                    lista.append(f"   • {c.name}: Conectar {connect}")
             
             embed.add_field(
-                name=f"🎤 Canais de Voz ({len(canais)})",
-                value="\n".join(lista),
+                name=f"🎤 Detalhes dos Canais",
+                value="\n".join(lista[:15]),
                 inline=False
             )
-        else:
-            embed.add_field(name="🎤 Canais de Voz", value="Nenhum canal encontrado!", inline=False)
         
-        # 3. Permissões do bot
+        # 4. Permissões do bot
         permissoes = ctx.guild.me.guild_permissions
         embed.add_field(
-            name="🔐 Permissões do Bot",
+            name="🔐 Permissões do Bot (Gerais)",
             value=f"Conectar: {'✅' if permissoes.connect else '❌'}\n"
                   f"Falar: {'✅' if permissoes.speak else '❌'}\n"
-                  f"Mover Membros: {'✅' if permissoes.move_members else '❌'}",
+                  f"Mover Membros: {'✅' if permissoes.move_members else '❌'}\n"
+                  f"Ver Canais: {'✅' if permissoes.view_channel else '❌'}",
             inline=False
         )
         
-        # 4. Status atual
+        # 5. Status atual
         if ctx.voice_client:
             embed.add_field(
                 name="🔊 Status Atual",
