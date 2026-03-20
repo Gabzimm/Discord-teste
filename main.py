@@ -4,8 +4,6 @@ from discord.ext import commands
 import os
 import sys
 import asyncio
-import aiohttp
-from aiohttp import web
 import socket
 import traceback
 
@@ -44,42 +42,35 @@ class MeuBot(commands.Bot):
             intents=intents,
             help_command=None
         )
+        
+        self.canal_voz_id = 1479257448010350673  # ID do canal WaveX
+        self.voz_conectada = False
     
-    async def setup_hook(self):
-        """Carrega os módulos quando o bot inicia"""
-        print("🔄 Carregando módulos...")
+    async def conectar_ao_canal_voz(self):
+        """Conecta automaticamente ao canal de voz ao iniciar"""
+        if not self.guilds:
+            return None
+        
+        for guild in self.guilds:
+            canal = guild.get_channel(self.canal_voz_id)
+            if canal:
+                try:
+                    for voz in self.voice_clients:
+                        if voz.guild == guild:
+                            await voz.disconnect()
+                            await asyncio.sleep(1)
+                    
+                    voz = await canal.connect()
+                    self.voz_conectada = True
+                    print(f"✅ Conectado ao canal {canal.name} em {guild.name}")
+                    return voz
+                except Exception as e:
+                    print(f"❌ Erro ao conectar: {e}")
+        
+        print("❌ Canal WaveX não encontrado!")
+        return None
 
 bot = MeuBot()
-
-# ==================== KEEP-ALIVE ====================
-class KeepAliveServer:
-    def __init__(self):
-        self.app = None
-        self.runner = None
-    
-    async def start(self):
-        try:
-            self.app = web.Application()
-            
-            async def handle(request):
-                return web.Response(text="✅ Bot Online - Use !help")
-            
-            self.app.router.add_get('/', handle)
-            self.runner = web.AppRunner(self.app)
-            await self.runner.setup()
-            
-            port = int(os.getenv('PORT', 8080))
-            site = web.TCPSite(self.runner, '0.0.0.0', port)
-            await site.start()
-            print(f"🌐 Keep-alive na porta {port}")
-        except Exception as e:
-            print(f"⚠️ Erro: {e}")
-    
-    async def stop(self):
-        if self.runner:
-            await self.runner.cleanup()
-
-keep_alive = KeepAliveServer()
 
 # ==================== COMANDOS PRINCIPAIS ====================
 
@@ -97,32 +88,21 @@ async def help_command(ctx):
         value="`!help` - Mostra esta mensagem\n"
               "`!ping` - Verifica latência\n"
               "`!status` - Status do bot\n"
-              "`!info` - Informações",
+              "`!info` - Informações do bot",
         inline=False
     )
     
     embed.add_field(
-        name="🎮 Sistema de Cargos",
-        value="`!cargos` - Lista todos os cargos\n"
-              "`!cargos_parar` - Para atualização\n"
-              "`!cargos_atualizar` - Força atualização",
+        name="🎮 Comandos de Cargos",
+        value="`!cargos` - Lista todos os cargos do servidor",
         inline=False
     )
     
     embed.add_field(
-        name="🔊 Sistema de Voz",
-        value="`!voz_conectar` - Conecta à call\n"
-              "`!voz_desconectar` - Desconecta\n"
-              "`!voz_status` - Status da voz\n"
-              "`!voz_reconectar` - Reconecta",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🎮 Outros Sistemas",
-        value="`!sets` - Sistema de sets\n"
-              "`!tickets` - Sistema de tickets\n"
-              "`!fixnick` - Corrige nickname",
+        name="🔊 Comandos de Voz",
+        value="`!entrar` - Entra na call WaveX\n"
+              "`!sair` - Sai da call\n"
+              "`!call` - Mostra status da call",
         inline=False
     )
     
@@ -137,23 +117,20 @@ async def ping_command(ctx):
 @bot.command(name="status")
 async def status_command(ctx):
     """!status - Status do bot"""
-    
-    # Verificar status da voz
-    voz_status = "❌ Desconectado"
-    for voz in bot.voice_clients:
-        if voz.is_connected():
-            voz_status = f"✅ Conectado em {voz.channel.name}"
-            break
-    
     embed = discord.Embed(
         title="📊 Status do Bot",
         color=discord.Color.blue()
     )
     
     embed.add_field(name="🤖 Nome", value=bot.user.name, inline=True)
+    embed.add_field(name="🆔 ID", value=bot.user.id, inline=True)
     embed.add_field(name="📡 Ping", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="🏠 Servidores", value=len(bot.guilds), inline=True)
-    embed.add_field(name="🔊 Voz", value=voz_status, inline=False)
+    
+    if ctx.voice_client and ctx.voice_client.is_connected():
+        embed.add_field(name="🔊 Voz", value=f"✅ Conectado em {ctx.voice_client.channel.name}", inline=False)
+    else:
+        embed.add_field(name="🔊 Voz", value="❌ Desconectado", inline=False)
     
     await ctx.send(embed=embed)
 
@@ -162,7 +139,7 @@ async def info_command(ctx):
     """!info - Informações do bot"""
     embed = discord.Embed(
         title="ℹ️ Sobre o Bot",
-        description="Bot para comunidade Jugadores",
+        description="Bot desenvolvido para a comunidade Jugadores",
         color=discord.Color.gold()
     )
     
@@ -172,28 +149,81 @@ async def info_command(ctx):
     
     await ctx.send(embed=embed)
 
-# ==================== COMANDOS EXEMPLO ====================
+# ==================== COMANDOS DE CARGO ====================
 
-@bot.command(name="sets")
-async def sets_command(ctx):
-    """!sets - Sistema de sets"""
-    await ctx.send("🎮 Sistema de sets (em desenvolvimento)")
-
-@bot.command(name="tickets")
-async def tickets_command(ctx):
-    """!tickets - Sistema de tickets"""
-    await ctx.send("🎫 Sistema de tickets (em desenvolvimento)")
-
-@bot.command(name="fixnick")
-async def fixnick_command(ctx, member: discord.Member = None):
-    """!fixnick - Corrige nickname"""
-    target = member or ctx.author
+@bot.command(name="cargos")
+async def cargos_command(ctx):
+    """!cargos - Lista cargos do servidor"""
     
-    if target != ctx.author and not ctx.author.guild_permissions.administrator:
-        await ctx.send("❌ Você não tem permissão para corrigir nickname de outros!")
+    cargos = [role for role in ctx.guild.roles if role.name != "@everyone"]
+    cargos.sort(key=lambda r: r.position, reverse=True)
+    
+    if not cargos:
+        await ctx.send("❌ Nenhum cargo encontrado!")
         return
     
-    await ctx.send(f"🔄 Corrigindo nickname de {target.mention}... (em desenvolvimento)")
+    embed = discord.Embed(
+        title="📋 Cargos do Servidor",
+        description=f"Total de **{len(cargos)}** cargos encontrados",
+        color=discord.Color.blue()
+    )
+    
+    lista = []
+    for i, cargo in enumerate(cargos, 1):
+        lista.append(f"`{i:02d}.` {cargo.mention} • Posição `#{i}` na hierarquia")
+    
+    for i in range(0, len(lista), 15):
+        bloco = lista[i:i+15]
+        embed.add_field(
+            name="📌 Cargos (Ordem Hierárquica)",
+            value="\n".join(bloco),
+            inline=False
+        )
+    
+    await ctx.send(embed=embed)
+
+# ==================== COMANDOS DE VOZ ====================
+
+@bot.command(name="entrar")
+async def entrar_call(ctx):
+    """!entrar - Entra na call WaveX"""
+    
+    canal = ctx.guild.get_channel(bot.canal_voz_id)
+    
+    if not canal:
+        await ctx.send("❌ Canal WaveX não encontrado!")
+        return
+    
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+        await asyncio.sleep(1)
+    
+    try:
+        await canal.connect()
+        bot.voz_conectada = True
+        await ctx.send(f"✅ Conectado ao canal **{canal.name}**!")
+    except Exception as e:
+        await ctx.send(f"❌ Erro: {e}")
+
+@bot.command(name="sair")
+async def sair_call(ctx):
+    """!sair - Sai da call"""
+    
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+        bot.voz_conectada = False
+        await ctx.send("✅ Desconectado!")
+    else:
+        await ctx.send("❌ Não estou em nenhum canal!")
+
+@bot.command(name="call")
+async def call_status(ctx):
+    """!call - Mostra status da call"""
+    
+    if ctx.voice_client and ctx.voice_client.is_connected():
+        await ctx.send(f"✅ Conectado em: {ctx.voice_client.channel.mention}")
+    else:
+        await ctx.send("❌ Desconectado")
 
 # ==================== EVENTOS ====================
 
@@ -206,19 +236,24 @@ async def on_ready():
     print(f"🆔 ID: {bot.user.id}")
     print(f"📡 Ping: {round(bot.latency * 1000)}ms")
     print(f"🏠 Servidores: {len(bot.guilds)}")
-    print(f"📋 Comandos: {len(bot.commands)}")
     print("="*60)
     
-    # Listar servidores
-    print("\n📋 Servidores:")
-    for guild in bot.guilds:
-        print(f"   • {guild.name} - {guild.member_count} membros")
+    print("\n📋 Servidores conectados:")
+    for i, guild in enumerate(bot.guilds, 1):
+        print(f"   {i}. {guild.name} - {guild.member_count} membros")
     
-    # Status
+    print("\n🔊 Tentando conectar ao canal WaveX...")
+    await asyncio.sleep(2)
+    await bot.conectar_ao_canal_voz()
+    
+    status = f"!help | {len(bot.guilds)} servers"
+    if bot.voz_conectada:
+        status += " | 🔊"
+    
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.playing,
-            name=f"!help | {len(bot.guilds)} servers"
+            name=status
         )
     )
     
@@ -227,15 +262,13 @@ async def on_ready():
 
 @bot.event
 async def on_guild_join(guild):
-    """Quando entra em um servidor"""
-    print(f"\n📥 Entrou em: {guild.name}")
+    print(f"\n📥 Entrou no servidor: {guild.name}")
     
-    # Mensagem de boas-vindas
     for channel in guild.text_channels:
         if channel.permissions_for(guild.me).send_messages:
             embed = discord.Embed(
                 title="👋 Obrigado por me adicionar!",
-                description="**WaveX** Os melhores preços!",
+                description="Use **!help** para ver todos os comandos!",
                 color=discord.Color.green()
             )
             await channel.send(embed=embed)
@@ -243,24 +276,20 @@ async def on_guild_join(guild):
 
 @bot.event
 async def on_command_error(ctx, error):
-    """Trata erros de comando"""
     if isinstance(error, commands.CommandNotFound):
         return
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ Você não tem permissão para usar este comando!")
     else:
         await ctx.send(f"❌ Erro: {error}")
 
 # ==================== CARREGAR MÓDULOS ====================
 async def carregar_modulos():
-    """Carrega todos os módulos"""
     print("\n" + "="*60)
     print("📦 CARREGANDO MÓDULOS")
     print("="*60)
     
     modulos = [
         'modules.cargos_serv',
-        'modules.voz',  # ← NOVO MÓDULO DE VOZ
+        'modules.voz',
     ]
     
     for modulo in modulos:
@@ -268,25 +297,18 @@ async def carregar_modulos():
             await bot.load_extension(modulo)
             print(f"   ✅ {modulo}")
         except Exception as e:
-            print(f"   ❌ {modulo}: {e}")
-    
-    print("="*60)
+            print(f"   ⚠️ {modulo}: {e}")
 
 # ==================== FUNÇÃO PRINCIPAL ====================
 async def main():
     print("\n" + "="*60)
-    print("🚀 INICIANDO BOT")
+    print("🚀 INICIANDO BOT DISCORD")
     print("="*60)
     
     TOKEN = os.getenv('DISCORD_TOKEN')
     if not TOKEN:
-        print("❌ Token não encontrado!")
+        print("❌ DISCORD_TOKEN não encontrado!")
         sys.exit(1)
-    
-    try:
-        await keep_alive.start()
-    except:
-        pass
     
     await carregar_modulos()
     
@@ -294,12 +316,13 @@ async def main():
         async with bot:
             await bot.start(TOKEN)
     except KeyboardInterrupt:
-        print("\n👋 Encerrando...")
+        print("\n👋 Bot encerrado")
+    except Exception as e:
+        print(f"\n❌ Erro fatal: {e}")
+        traceback.print_exc()
     finally:
-        # Desconectar da voz
         for voz in bot.voice_clients:
             await voz.disconnect()
-        await keep_alive.stop()
         await bot.close()
 
 if __name__ == '__main__':
