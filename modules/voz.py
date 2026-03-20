@@ -70,27 +70,35 @@ class VozCog(commands.Cog):
             for c in canais_voz:
                 print(f"      • {c.name}")
             
-            # Procurar canal alvo (ignorando formatação)
+            # Procurar canal alvo (várias formas)
             canal_encontrado = None
+            
+            # 1. Buscar por nome exato
             for channel in canais_voz:
-                # Comparar ignorando caracteres especiais e formatação
-                nome_canal = channel.name
-                nome_alvo = self.canal_voz_alvo
-                
-                # Verificar se o nome contém "WaveX" ou "𝐖𝐚𝐯𝐞𝐗"
-                if "WaveX" in nome_canal or "𝐖𝐚𝐯𝐞𝐗" in nome_canal:
+                if channel.name == self.canal_voz_alvo:
                     canal_encontrado = channel
-                    print(f"   ✅ Canal encontrado: {channel.name}")
+                    print(f"   ✅ Canal encontrado (exato): {channel.name}")
                     break
-                
-                # Verificar nome exato
-                if nome_canal == nome_alvo:
-                    canal_encontrado = channel
-                    print(f"   ✅ Canal encontrado: {channel.name}")
-                    break
+            
+            # 2. Buscar por "WaveX" (ignorando formatação)
+            if not canal_encontrado:
+                for channel in canais_voz:
+                    if "WaveX" in channel.name or "𝐖𝐚𝐯𝐞𝐗" in channel.name:
+                        canal_encontrado = channel
+                        print(f"   ✅ Canal encontrado (parcial): {channel.name}")
+                        break
+            
+            # 3. Buscar por "Wave" 
+            if not canal_encontrado:
+                for channel in canais_voz:
+                    if "Wave" in channel.name:
+                        canal_encontrado = channel
+                        print(f"   ✅ Canal encontrado (Wave): {channel.name}")
+                        break
             
             if not canal_encontrado:
                 print(f"   ❌ Canal com 'WaveX' não encontrado")
+                print(f"   Dica: Use !voz_listar para ver todos os canais")
                 continue
             
             # Verificar permissões
@@ -166,21 +174,27 @@ class VozCog(commands.Cog):
         
         await ctx.send("🔊 Tentando conectar...")
         
-        # Tentar conectar automaticamente
+        # Primeiro, tentar conectar ao canal do usuário
+        if ctx.author.voice:
+            canal = ctx.author.voice.channel
+            try:
+                # Desconectar se já estiver conectado
+                if ctx.voice_client:
+                    await ctx.voice_client.disconnect()
+                    await asyncio.sleep(1)
+                
+                await canal.connect()
+                self.voz_conectada = True
+                await ctx.send(f"✅ Conectado ao seu canal: {canal.mention}!")
+                return
+            except Exception as e:
+                print(f"Erro ao conectar no canal do usuário: {e}")
+        
+        # Se não conseguir ou usuário não está em canal, tentar conexão automática
         if await self.conectar_automatico():
             await ctx.send("✅ Conectado com sucesso!")
         else:
-            # Se falhou, tentar conectar ao canal onde o usuário está
-            if ctx.author.voice:
-                canal = ctx.author.voice.channel
-                try:
-                    await canal.connect()
-                    self.voz_conectada = True
-                    await ctx.send(f"✅ Conectado ao seu canal: {canal.mention}!")
-                except Exception as e:
-                    await ctx.send(f"❌ Falha na conexão: {e}")
-            else:
-                await ctx.send("❌ Falha na reconexão! Verifique se o canal '💜・𝐖𝐚𝐯𝐞𝐗' existe e se tenho permissão de conectar.")
+            await ctx.send("❌ Falha na conexão! Use `!voz_listar` para ver os canais disponíveis.")
     
     @commands.command(name="voz_desconectar")
     async def voz_desconectar_comando(self, ctx):
@@ -225,8 +239,8 @@ class VozCog(commands.Cog):
                 status = "✅" if permissoes.connect else "❌"
                 
                 # Destacar canal alvo
-                if "WaveX" in c.name or "𝐖𝐚𝐯𝐞𝐗" in c.name:
-                    lista.append(f"🎯 {status} {c.name}")
+                if "WaveX" in c.name or "𝐖𝐚𝐯𝐞𝐗" in c.name or "Wave" in c.name:
+                    lista.append(f"🎯 {status} **{c.name}**")
                 else:
                     lista.append(f"   {status} {c.name}")
             
@@ -238,28 +252,11 @@ class VozCog(commands.Cog):
         
         embed.add_field(
             name="🎯 Canal Alvo",
-            value=f"`💜・𝐖𝐚𝐯𝐞𝐗` ou qualquer canal com 'WaveX' no nome",
+            value=f"Qualquer canal com 'WaveX' ou 'Wave' no nome",
             inline=False
         )
         
         await ctx.send(embed=embed)
-    
-    @commands.command(name="voz_reconectar")
-    async def voz_reconectar_comando(self, ctx):
-        """!voz_reconectar - Força reconexão ao canal alvo"""
-        
-        await ctx.send("🔄 Tentando reconectar...")
-        
-        # Desconectar se estiver conectado
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-            await asyncio.sleep(2)
-        
-        # Tentar conectar
-        if await self.conectar_automatico():
-            await ctx.send("✅ Reconectado com sucesso!")
-        else:
-            await ctx.send("❌ Falha na reconexão! Use `!voz_status` para ver os canais disponíveis.")
     
     @commands.command(name="voz_listar")
     async def voz_listar_comando(self, ctx):
@@ -282,13 +279,81 @@ class VozCog(commands.Cog):
             permissoes = c.permissions_for(ctx.guild.me)
             status = "✅" if permissoes.connect else "❌"
             membros = len(c.members)
-            lista.append(f"{status} **{c.name}** - {membros} membros")
+            lista.append(f"{status} **{c.name}** - {membros} membros (ID: {c.id})")
         
         embed.add_field(
             name=f"Total: {len(canais)} canais",
             value="\n".join(lista),
             inline=False
         )
+        
+        await ctx.send(embed=embed)
+    
+    @commands.command(name="voz_reconectar")
+    async def voz_reconectar_comando(self, ctx):
+        """!voz_reconectar - Força reconexão ao canal alvo"""
+        
+        await ctx.send("🔄 Tentando reconectar...")
+        
+        # Desconectar se estiver conectado
+        if ctx.voice_client:
+            await ctx.voice_client.disconnect()
+            await asyncio.sleep(2)
+        
+        # Tentar conectar
+        if await self.conectar_automatico():
+            await ctx.send("✅ Reconectado com sucesso!")
+        else:
+            await ctx.send("❌ Falha na reconexão! Use `!voz_listar` para ver os canais disponíveis.")
+    
+    @commands.command(name="voz_debug")
+    async def voz_debug_comando(self, ctx):
+        """!voz_debug - Diagnóstico completo da voz"""
+        
+        embed = discord.Embed(
+            title="🔧 Diagnóstico de Voz",
+            color=discord.Color.orange()
+        )
+        
+        # 1. Servidor
+        embed.add_field(name="📌 Servidor", value=ctx.guild.name, inline=False)
+        
+        # 2. Canais de voz
+        canais = ctx.guild.voice_channels
+        if canais:
+            lista = []
+            for c in canais:
+                permissoes = c.permissions_for(ctx.guild.me)
+                connect = "✅" if permissoes.connect else "❌"
+                lista.append(f"{connect} **{c.name}** (ID: {c.id})")
+            
+            embed.add_field(
+                name=f"🎤 Canais de Voz ({len(canais)})",
+                value="\n".join(lista),
+                inline=False
+            )
+        else:
+            embed.add_field(name="🎤 Canais de Voz", value="Nenhum canal encontrado!", inline=False)
+        
+        # 3. Permissões do bot
+        permissoes = ctx.guild.me.guild_permissions
+        embed.add_field(
+            name="🔐 Permissões do Bot",
+            value=f"Conectar: {'✅' if permissoes.connect else '❌'}\n"
+                  f"Falar: {'✅' if permissoes.speak else '❌'}\n"
+                  f"Mover Membros: {'✅' if permissoes.move_members else '❌'}",
+            inline=False
+        )
+        
+        # 4. Status atual
+        if ctx.voice_client:
+            embed.add_field(
+                name="🔊 Status Atual",
+                value=f"Conectado em: {ctx.voice_client.channel.name}",
+                inline=False
+            )
+        else:
+            embed.add_field(name="🔊 Status Atual", value="Desconectado", inline=False)
         
         await ctx.send(embed=embed)
 
