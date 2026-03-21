@@ -52,41 +52,46 @@ class MeuBot(commands.Bot):
         if not self.guilds:
             return None
         
-        # Verificar se já está conectado em algum lugar
-        if self.voice_clients:
-            for voz in self.voice_clients:
-                if voz.is_connected():
-                    print(f"✅ Já estou conectado em {voz.channel.name}")
-                    self.voz_conectada = True
-                    return voz
+        # Forçar limpeza de conexões fantasmas
+        for voz in self.voice_clients:
+            if not voz.is_connected():
+                await voz.disconnect(force=True)
+        
+        # Verificar se realmente está conectado em algum lugar
+        for voz in self.voice_clients:
+            if voz.is_connected():
+                print(f"✅ Já estou conectado em {voz.channel.name} em {voz.guild.name}")
+                self.voz_conectada = True
+                return voz
         
         for guild in self.guilds:
             canal = guild.get_channel(self.canal_voz_id)
             if canal:
                 try:
-                    # Verificar se já está conectado neste servidor
+                    # Verificar novamente se não tem conexão neste servidor
                     for voz in self.voice_clients:
-                        if voz.guild == guild:
+                        if voz.guild == guild and voz.is_connected():
                             print(f"✅ Já conectado em {voz.channel.name} em {guild.name}")
                             self.voz_conectada = True
                             return voz
                     
-                    # Conectar
                     print(f"🔊 Conectando a {canal.name} em {guild.name}...")
                     voz = await canal.connect()
                     self.voz_conectada = True
                     print(f"✅ Conectado ao canal {canal.name} em {guild.name}")
                     return voz
                 except discord.errors.ClientException as e:
-                    if "Already connected" in str(e):
-                        print(f"⚠️ Já conectado em {guild.name}")
+                    error_msg = str(e)
+                    if "Already connected" in error_msg:
+                        print(f"⚠️ Já conectado em {guild.name} (mas não detectado)")
                         self.voz_conectada = True
                     else:
-                        print(f"❌ Erro ao conectar: {e}")
+                        print(f"❌ Erro ao conectar: {error_msg}")
                 except Exception as e:
                     print(f"❌ Erro ao conectar: {e}")
         
-        print("❌ Canal WaveX não encontrado ou já conectado!")
+        print("❌ Canal WaveX não encontrado!")
+        self.voz_conectada = False
         return None
 
 bot = MeuBot()
@@ -167,7 +172,8 @@ async def help_command(ctx):
         value="`!help` - Mostra esta mensagem\n"
               "`!ping` - Verifica latência\n"
               "`!status` - Status do bot\n"
-              "`!info` - Informações do bot",
+              "`!info` - Informações do bot\n"
+              "`!voz_estado` - Diagnóstico da voz",
         inline=False
     )
     
@@ -206,6 +212,7 @@ async def status_command(ctx):
     embed.add_field(name="📡 Ping", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="🏠 Servidores", value=len(bot.guilds), inline=True)
     
+    # Verificação real de conexão
     if ctx.voice_client and ctx.voice_client.is_connected():
         embed.add_field(name="🔊 Voz", value=f"✅ Conectado em {ctx.voice_client.channel.name}", inline=False)
     else:
@@ -225,6 +232,56 @@ async def info_command(ctx):
     embed.add_field(name="📌 Versão", value="2.0.0", inline=True)
     embed.add_field(name="📚 Biblioteca", value=f"discord.py {discord.__version__}", inline=True)
     embed.add_field(name="⚙️ Prefixo", value="`!`", inline=True)
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name="voz_estado")
+async def voz_estado(ctx):
+    """!voz_estado - Diagnóstico completo da voz"""
+    
+    embed = discord.Embed(
+        title="🔊 Diagnóstico de Voz",
+        color=discord.Color.blue()
+    )
+    
+    # Limpar conexões fantasmas primeiro
+    for voz in bot.voice_clients:
+        if not voz.is_connected():
+            embed.add_field(name="⚠️ Conexão Fantasma", value=f"Canal {voz.channel.name} foi removido", inline=False)
+            await voz.disconnect(force=True)
+    
+    # Status atual
+    if ctx.voice_client and ctx.voice_client.is_connected():
+        embed.add_field(
+            name="✅ Status Atual",
+            value=f"Conectado em: {ctx.voice_client.channel.mention}\nServidor: {ctx.guild.name}",
+            inline=False
+        )
+    else:
+        embed.add_field(name="❌ Status Atual", value="Desconectado", inline=False)
+    
+    # Conexões do bot
+    if bot.voice_clients:
+        for i, voz in enumerate(bot.voice_clients, 1):
+            status = "✅ Conectado" if voz.is_connected() else "❌ Desconectado (fantasma)"
+            embed.add_field(
+                name=f"Conexão {i}",
+                value=f"{status}\nCanal: {voz.channel.name if voz.channel else 'Nenhum'}\nServidor: {voz.guild.name}",
+                inline=False
+            )
+    else:
+        embed.add_field(name="📋 Conexões", value="Nenhuma conexão ativa", inline=False)
+    
+    # Canal alvo
+    canal = ctx.guild.get_channel(bot.canal_voz_id)
+    if canal:
+        embed.add_field(
+            name="🎯 Canal Alvo",
+            value=f"{canal.mention}\nID: {canal.id}",
+            inline=False
+        )
+    else:
+        embed.add_field(name="🎯 Canal Alvo", value="❌ Não encontrado!", inline=False)
     
     await ctx.send(embed=embed)
 
@@ -261,11 +318,16 @@ async def cargos_command(ctx):
     
     await ctx.send(embed=embed)
 
-# ==================== COMANDOS DE VOZ (fallback) ====================
+# ==================== COMANDOS DE VOZ ====================
 
 @bot.command(name="entrar")
-async def entrar_call_fallback(ctx):
-    """!entrar - Entra na call WaveX (fallback)"""
+async def entrar_call(ctx):
+    """!entrar - Entra na call WaveX"""
+    
+    # Limpar conexões fantasmas
+    for voz in bot.voice_clients:
+        if not voz.is_connected():
+            await voz.disconnect(force=True)
     
     # Verificar se já está conectado
     if ctx.voice_client and ctx.voice_client.is_connected():
@@ -280,32 +342,46 @@ async def entrar_call_fallback(ctx):
     
     try:
         await ctx.send(f"🔊 Conectando ao canal **{canal.name}**...")
+        
+        # Desconectar forçado se houver conexão fantasma
+        if ctx.voice_client:
+            try:
+                await ctx.voice_client.disconnect(force=True)
+                await asyncio.sleep(1)
+            except:
+                pass
+        
         await canal.connect()
         bot.voz_conectada = True
         await ctx.send(f"✅ Conectado ao canal **{canal.name}**!")
+        
     except discord.errors.ClientException as e:
-        if "Already connected" in str(e):
-            await ctx.send("✅ Já estou conectado em algum canal!")
+        error_msg = str(e)
+        if "Already connected" in error_msg:
+            await ctx.send("⚠️ Parece que já estou conectado, mas não consigo detectar. Use `!sair` e `!voz_estado` para diagnosticar.")
         else:
-            await ctx.send(f"❌ Erro: {e}")
+            await ctx.send(f"❌ Erro: {error_msg}")
     except Exception as e:
         await ctx.send(f"❌ Erro: {e}")
 
 @bot.command(name="sair")
-async def sair_call_fallback(ctx):
+async def sair_call(ctx):
     """!sair - Sai da call"""
     
     if not ctx.voice_client:
         await ctx.send("❌ Não estou em nenhum canal de voz!")
         return
     
-    canal_nome = ctx.voice_client.channel.name
-    await ctx.voice_client.disconnect()
-    bot.voz_conectada = False
-    await ctx.send(f"✅ Desconectado de **{canal_nome}**!")
+    try:
+        canal_nome = ctx.voice_client.channel.name
+        await ctx.voice_client.disconnect(force=True)
+        bot.voz_conectada = False
+        await ctx.send(f"✅ Desconectado de **{canal_nome}**!")
+    except Exception as e:
+        await ctx.send(f"❌ Erro ao desconectar: {e}")
 
 @bot.command(name="call")
-async def call_status_fallback(ctx):
+async def call_status(ctx):
     """!call - Mostra status da call"""
     
     if ctx.voice_client and ctx.voice_client.is_connected():
