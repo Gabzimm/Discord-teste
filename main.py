@@ -52,23 +52,41 @@ class MeuBot(commands.Bot):
         if not self.guilds:
             return None
         
+        # Verificar se já está conectado em algum lugar
+        if self.voice_clients:
+            for voz in self.voice_clients:
+                if voz.is_connected():
+                    print(f"✅ Já estou conectado em {voz.channel.name}")
+                    self.voz_conectada = True
+                    return voz
+        
         for guild in self.guilds:
             canal = guild.get_channel(self.canal_voz_id)
             if canal:
                 try:
+                    # Verificar se já está conectado neste servidor
                     for voz in self.voice_clients:
                         if voz.guild == guild:
-                            await voz.disconnect()
-                            await asyncio.sleep(1)
+                            print(f"✅ Já conectado em {voz.channel.name} em {guild.name}")
+                            self.voz_conectada = True
+                            return voz
                     
+                    # Conectar
+                    print(f"🔊 Conectando a {canal.name} em {guild.name}...")
                     voz = await canal.connect()
                     self.voz_conectada = True
                     print(f"✅ Conectado ao canal {canal.name} em {guild.name}")
                     return voz
+                except discord.errors.ClientException as e:
+                    if "Already connected" in str(e):
+                        print(f"⚠️ Já conectado em {guild.name}")
+                        self.voz_conectada = True
+                    else:
+                        print(f"❌ Erro ao conectar: {e}")
                 except Exception as e:
                     print(f"❌ Erro ao conectar: {e}")
         
-        print("❌ Canal WaveX não encontrado!")
+        print("❌ Canal WaveX não encontrado ou já conectado!")
         return None
 
 bot = MeuBot()
@@ -113,13 +131,11 @@ class KeepAliveServer:
             self.runner = web.AppRunner(self.app)
             await self.runner.setup()
             
-            # Porta 8080 para não conflitar
             port = 8080
             self.site = web.TCPSite(self.runner, '0.0.0.0', port)
             await self.site.start()
             
             print(f"🌐 Keep-alive servidor rodando na porta {port}")
-            print(f"   Health check: http://localhost:{port}/health")
             
         except Exception as e:
             print(f"⚠️ Erro ao iniciar keep-alive: {e}")
@@ -245,11 +261,16 @@ async def cargos_command(ctx):
     
     await ctx.send(embed=embed)
 
-# ==================== COMANDOS DE VOZ ====================
+# ==================== COMANDOS DE VOZ (fallback) ====================
 
 @bot.command(name="entrar")
-async def entrar_call(ctx):
-    """!entrar - Entra na call WaveX"""
+async def entrar_call_fallback(ctx):
+    """!entrar - Entra na call WaveX (fallback)"""
+    
+    # Verificar se já está conectado
+    if ctx.voice_client and ctx.voice_client.is_connected():
+        await ctx.send(f"✅ Já estou conectado em **{ctx.voice_client.channel.name}**!")
+        return
     
     canal = ctx.guild.get_channel(bot.canal_voz_id)
     
@@ -257,30 +278,34 @@ async def entrar_call(ctx):
         await ctx.send("❌ Canal WaveX não encontrado!")
         return
     
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
-        await asyncio.sleep(1)
-    
     try:
+        await ctx.send(f"🔊 Conectando ao canal **{canal.name}**...")
         await canal.connect()
         bot.voz_conectada = True
         await ctx.send(f"✅ Conectado ao canal **{canal.name}**!")
+    except discord.errors.ClientException as e:
+        if "Already connected" in str(e):
+            await ctx.send("✅ Já estou conectado em algum canal!")
+        else:
+            await ctx.send(f"❌ Erro: {e}")
     except Exception as e:
         await ctx.send(f"❌ Erro: {e}")
 
 @bot.command(name="sair")
-async def sair_call(ctx):
+async def sair_call_fallback(ctx):
     """!sair - Sai da call"""
     
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
-        bot.voz_conectada = False
-        await ctx.send("✅ Desconectado!")
-    else:
-        await ctx.send("❌ Não estou em nenhum canal!")
+    if not ctx.voice_client:
+        await ctx.send("❌ Não estou em nenhum canal de voz!")
+        return
+    
+    canal_nome = ctx.voice_client.channel.name
+    await ctx.voice_client.disconnect()
+    bot.voz_conectada = False
+    await ctx.send(f"✅ Desconectado de **{canal_nome}**!")
 
 @bot.command(name="call")
-async def call_status(ctx):
+async def call_status_fallback(ctx):
     """!call - Mostra status da call"""
     
     if ctx.voice_client and ctx.voice_client.is_connected():
@@ -305,7 +330,7 @@ async def on_ready():
     for i, guild in enumerate(bot.guilds, 1):
         print(f"   {i}. {guild.name} - {guild.member_count} membros")
     
-    # Conectar à voz automaticamente
+    # Conectar à voz automaticamente (apenas uma vez)
     print("\n🔊 Tentando conectar ao canal WaveX...")
     await asyncio.sleep(2)
     await bot.conectar_ao_canal_voz()
