@@ -49,7 +49,11 @@ class MeuBot(commands.Bot):
 
 bot = MeuBot()
 
-# ==================== KEEP-ALIVE SERVER (PORTA 8080) ====================
+# ==================== KEEP-ALIVE SERVER COM SITE COMPLETO ====================
+from aiohttp import web
+import aiohttp_jinja2
+import jinja2
+
 class KeepAliveServer:
     def __init__(self):
         self.app = None
@@ -61,42 +65,152 @@ class KeepAliveServer:
         try:
             self.app = web.Application()
             
+            # Rota principal
             async def handle_home(request):
-                return web.Response(
-                    text=f"""🤖 Bot Discord Online - WaveX
-
-📊 Status:
-• Bot: {self.bot.user.name if self.bot and self.bot.user else 'Conectando...'}
-• Servidores: {len(self.bot.guilds) if self.bot and self.bot.guilds else 0}
-• Voz: {'✅ Conectado' if self.bot and self.bot.voz_conectada else '❌ Desconectado'}
-
-💡 Comandos: !help | !cargos | !entrar | !sair""",
-                    content_type='text/plain'
-                )
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>WaveX Bot - Status</title>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {{
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            margin: 0;
+                            padding: 0;
+                            min-height: 100vh;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                        }}
+                        .container {{
+                            background: white;
+                            border-radius: 20px;
+                            padding: 40px;
+                            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                            max-width: 600px;
+                            width: 90%;
+                            text-align: center;
+                        }}
+                        h1 {{
+                            color: #667eea;
+                            margin-bottom: 10px;
+                        }}
+                        .status {{
+                            font-size: 18px;
+                            margin: 20px 0;
+                            padding: 15px;
+                            border-radius: 10px;
+                            background: #f0f0f0;
+                        }}
+                        .online {{
+                            color: #4CAF50;
+                            font-weight: bold;
+                        }}
+                        .offline {{
+                            color: #f44336;
+                            font-weight: bold;
+                        }}
+                        .info {{
+                            text-align: left;
+                            margin: 20px 0;
+                            padding: 15px;
+                            background: #e3f2fd;
+                            border-radius: 10px;
+                        }}
+                        .commands {{
+                            text-align: left;
+                            margin: 20px 0;
+                            padding: 15px;
+                            background: #f5f5f5;
+                            border-radius: 10px;
+                        }}
+                        .commands code {{
+                            background: #e0e0e0;
+                            padding: 2px 6px;
+                            border-radius: 4px;
+                            font-family: monospace;
+                        }}
+                        footer {{
+                            margin-top: 20px;
+                            color: #999;
+                            font-size: 12px;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🤖 WaveX Bot</h1>
+                        <div class="status">
+                            Status: <span class="online">🟢 ONLINE</span>
+                        </div>
+                        <div class="info">
+                            <strong>📊 Informações:</strong><br>
+                            • Bot: {self.bot.user.name if self.bot and self.bot.user else 'Conectando...'}<br>
+                            • Servidores: {len(self.bot.guilds) if self.bot and self.bot.guilds else 0}<br>
+                            • Voz: {'✅ Conectado' if self.bot and self.bot.voz_conectada else '❌ Desconectado'}<br>
+                            • Ping: {round(self.bot.latency * 1000) if self.bot and self.bot.latency else 0}ms
+                        </div>
+                        <div class="commands">
+                            <strong>🎮 Comandos do Bot:</strong><br>
+                            <code>!help</code> - Lista todos os comandos<br>
+                            <code>!ping</code> - Verifica latência<br>
+                            <code>!status</code> - Status do bot<br>
+                            <code>!info</code> - Informações<br>
+                            <code>!cargos</code> - Lista cargos<br>
+                            <code>!entrar</code> - Entra na call WaveX<br>
+                            <code>!sair</code> - Sai da call<br>
+                            <code>!call</code> - Status da call
+                        </div>
+                        <footer>
+                            Desenvolvido para comunidade WaveX | {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+                        </footer>
+                    </div>
+                </body>
+                </html>
+                """
+                return web.Response(text=html, content_type='text/html')
             
-            async def handle_health(request):
+            # Rota de API
+            async def handle_api(request):
                 return web.json_response({
                     "status": "online",
                     "timestamp": datetime.now().isoformat(),
-                    "bot": self.bot.user.name if self.bot and self.bot.user else None,
+                    "bot": {
+                        "nome": self.bot.user.name if self.bot and self.bot.user else None,
+                        "id": self.bot.user.id if self.bot and self.bot.user else None,
+                        "ping": round(self.bot.latency * 1000) if self.bot and self.bot.latency else 0
+                    },
                     "servidores": len(self.bot.guilds) if self.bot and self.bot.guilds else 0,
                     "voz_conectada": self.bot.voz_conectada if self.bot else False
                 })
             
+            # Rota de health check
+            async def handle_health(request):
+                return web.json_response({
+                    "status": "healthy",
+                    "timestamp": datetime.now().isoformat()
+                })
+            
             self.app.router.add_get('/', handle_home)
+            self.app.router.add_get('/api', handle_api)
             self.app.router.add_get('/health', handle_health)
             
             self.runner = web.AppRunner(self.app)
             await self.runner.setup()
             
-            port = 8080
+            # Usar porta do Render (10000) para site público
+            port = int(os.environ.get('PORT', 10000))
             self.site = web.TCPSite(self.runner, '0.0.0.0', port)
             await self.site.start()
             
-            print(f"🌐 Keep-alive servidor rodando na porta {port}")
+            print(f"🌐 Site público rodando na porta {port}")
+            print(f"   Acesse: https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost')}")
             
         except Exception as e:
-            print(f"⚠️ Erro ao iniciar keep-alive: {e}")
+            print(f"⚠️ Erro ao iniciar servidor: {e}")
     
     async def stop(self):
         if self.site:
@@ -106,8 +220,6 @@ class KeepAliveServer:
     
     def set_bot(self, bot):
         self.bot = bot
-
-keep_alive = KeepAliveServer()
 
 # ==================== COMANDOS PRINCIPAIS ====================
 
