@@ -6,6 +6,7 @@ import sys
 import asyncio
 import socket
 import traceback
+from aiohttp import web
 
 # ==================== VERIFICAÇÃO DE INSTÂNCIA ÚNICA ====================
 def verificar_instancia_unica():
@@ -71,6 +72,68 @@ class MeuBot(commands.Bot):
         return None
 
 bot = MeuBot()
+
+# ==================== KEEP-ALIVE SERVER (PORTA 8080) ====================
+class KeepAliveServer:
+    def __init__(self):
+        self.app = None
+        self.runner = None
+        self.site = None
+        self.bot = None
+    
+    async def start(self):
+        try:
+            self.app = web.Application()
+            
+            async def handle_home(request):
+                return web.Response(
+                    text=f"""🤖 Bot Discord Online - WaveX
+
+📊 Status:
+• Bot: {self.bot.user.name if self.bot and self.bot.user else 'Conectando...'}
+• Servidores: {len(self.bot.guilds) if self.bot and self.bot.guilds else 0}
+• Voz: {'✅ Conectado' if self.bot and self.bot.voz_conectada else '❌ Desconectado'}
+
+💡 Comandos: !help | !cargos | !entrar | !sair""",
+                    content_type='text/plain'
+                )
+            
+            async def handle_health(request):
+                return web.json_response({
+                    "status": "online",
+                    "timestamp": datetime.now().isoformat(),
+                    "bot": self.bot.user.name if self.bot and self.bot.user else None,
+                    "servidores": len(self.bot.guilds) if self.bot and self.bot.guilds else 0,
+                    "voz_conectada": self.bot.voz_conectada if self.bot else False
+                })
+            
+            self.app.router.add_get('/', handle_home)
+            self.app.router.add_get('/health', handle_health)
+            
+            self.runner = web.AppRunner(self.app)
+            await self.runner.setup()
+            
+            # Porta 8080 para não conflitar
+            port = 8080
+            self.site = web.TCPSite(self.runner, '0.0.0.0', port)
+            await self.site.start()
+            
+            print(f"🌐 Keep-alive servidor rodando na porta {port}")
+            print(f"   Health check: http://localhost:{port}/health")
+            
+        except Exception as e:
+            print(f"⚠️ Erro ao iniciar keep-alive: {e}")
+    
+    async def stop(self):
+        if self.site:
+            await self.site.stop()
+        if self.runner:
+            await self.runner.cleanup()
+    
+    def set_bot(self, bot):
+        self.bot = bot
+
+keep_alive = KeepAliveServer()
 
 # ==================== COMANDOS PRINCIPAIS ====================
 
@@ -242,10 +305,12 @@ async def on_ready():
     for i, guild in enumerate(bot.guilds, 1):
         print(f"   {i}. {guild.name} - {guild.member_count} membros")
     
+    # Conectar à voz automaticamente
     print("\n🔊 Tentando conectar ao canal WaveX...")
     await asyncio.sleep(2)
     await bot.conectar_ao_canal_voz()
     
+    # Status personalizado
     status = f"!help | {len(bot.guilds)} servers"
     if bot.voz_conectada:
         status += " | 🔊"
@@ -310,8 +375,20 @@ async def main():
         print("❌ DISCORD_TOKEN não encontrado!")
         sys.exit(1)
     
+    # Configurar keep-alive com o bot
+    keep_alive.set_bot(bot)
+    
+    # Iniciar keep-alive
+    try:
+        print("\n🌐 Iniciando servidor keep-alive...")
+        await keep_alive.start()
+    except Exception as e:
+        print(f"⚠️ Erro no keep-alive: {e}")
+    
+    # Carregar módulos
     await carregar_modulos()
     
+    # Conectar ao Discord
     try:
         async with bot:
             await bot.start(TOKEN)
@@ -323,6 +400,7 @@ async def main():
     finally:
         for voz in bot.voice_clients:
             await voz.disconnect()
+        await keep_alive.stop()
         await bot.close()
 
 if __name__ == '__main__':
