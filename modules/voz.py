@@ -13,12 +13,15 @@ class VozCog(commands.Cog):
     async def entrar_call(self, ctx):
         """!entrar - Entra na call WaveX"""
         
-        # Limpar conexões fantasmas no bot
+        # Limpar conexões fantasmas
         for voz in self.bot.voice_clients:
             if not voz.is_connected():
-                await voz.disconnect(force=True)
+                try:
+                    await voz.disconnect(force=True)
+                except:
+                    pass
         
-        # Verificar se já está conectado de verdade
+        # Verificar se já está conectado
         if ctx.voice_client and ctx.voice_client.is_connected():
             await ctx.send(f"✅ Já estou conectado em **{ctx.voice_client.channel.name}**!")
             return
@@ -38,22 +41,20 @@ class VozCog(commands.Cog):
         try:
             await ctx.send(f"🔊 Conectando ao canal **{canal.name}**...")
             
-            # Desconectar forçado se houver conexão fantasma
-            if ctx.voice_client:
-                try:
-                    await ctx.voice_client.disconnect(force=True)
-                    await asyncio.sleep(1)
-                except:
-                    pass
-            
-            await canal.connect()
+            # Conectar diretamente, sem desconectar antes
+            voz = await canal.connect()
             self.bot.voz_conectada = True
             await ctx.send(f"✅ Conectado ao canal **{canal.name}**!")
+            
+            # Manter a conexão viva
+            if voz and voz.is_connected():
+                await ctx.send(f"🔊 Bot está conectado e permanecerá na call!")
             
         except discord.errors.ClientException as e:
             error_msg = str(e)
             if "Already connected" in error_msg:
-                await ctx.send("⚠️ Parece que já estou conectado, mas não consigo detectar. Use `!sair` e `!voz_estado` para diagnosticar.")
+                await ctx.send("✅ Já estou conectado em algum canal!")
+                self.bot.voz_conectada = True
             else:
                 await ctx.send(f"❌ Erro: {error_msg}")
         except Exception as e:
@@ -71,7 +72,7 @@ class VozCog(commands.Cog):
         
         try:
             canal_nome = ctx.voice_client.channel.name
-            await ctx.voice_client.disconnect(force=True)
+            await ctx.voice_client.disconnect()
             self.bot.voz_conectada = False
             await ctx.send(f"✅ Desconectado de **{canal_nome}**!")
         except Exception as e:
