@@ -49,11 +49,7 @@ class MeuBot(commands.Bot):
 
 bot = MeuBot()
 
-# ==================== KEEP-ALIVE SERVER COM SITE COMPLETO ====================
-from aiohttp import web
-import aiohttp_jinja2
-import jinja2
-
+# ==================== KEEP-ALIVE SERVER ====================
 class KeepAliveServer:
     def __init__(self):
         self.app = None
@@ -65,7 +61,6 @@ class KeepAliveServer:
         try:
             self.app = web.Application()
             
-            # Rota principal
             async def handle_home(request):
                 html = f"""
                 <!DOCTYPE html>
@@ -94,50 +89,14 @@ class KeepAliveServer:
                             width: 90%;
                             text-align: center;
                         }}
-                        h1 {{
-                            color: #667eea;
-                            margin-bottom: 10px;
-                        }}
-                        .status {{
-                            font-size: 18px;
-                            margin: 20px 0;
-                            padding: 15px;
-                            border-radius: 10px;
-                            background: #f0f0f0;
-                        }}
-                        .online {{
-                            color: #4CAF50;
-                            font-weight: bold;
-                        }}
-                        .offline {{
-                            color: #f44336;
-                            font-weight: bold;
-                        }}
-                        .info {{
-                            text-align: left;
-                            margin: 20px 0;
-                            padding: 15px;
-                            background: #e3f2fd;
-                            border-radius: 10px;
-                        }}
-                        .commands {{
-                            text-align: left;
-                            margin: 20px 0;
-                            padding: 15px;
-                            background: #f5f5f5;
-                            border-radius: 10px;
-                        }}
-                        .commands code {{
-                            background: #e0e0e0;
-                            padding: 2px 6px;
-                            border-radius: 4px;
-                            font-family: monospace;
-                        }}
-                        footer {{
-                            margin-top: 20px;
-                            color: #999;
-                            font-size: 12px;
-                        }}
+                        h1 {{ color: #667eea; margin-bottom: 10px; }}
+                        .status {{ font-size: 18px; margin: 20px 0; padding: 15px; border-radius: 10px; background: #f0f0f0; }}
+                        .online {{ color: #4CAF50; font-weight: bold; }}
+                        .offline {{ color: #f44336; font-weight: bold; }}
+                        .info {{ text-align: left; margin: 20px 0; padding: 15px; background: #e3f2fd; border-radius: 10px; }}
+                        .commands {{ text-align: left; margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 10px; }}
+                        .commands code {{ background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-family: monospace; }}
+                        footer {{ margin-top: 20px; color: #999; font-size: 12px; }}
                     </style>
                 </head>
                 <body>
@@ -173,7 +132,6 @@ class KeepAliveServer:
                 """
                 return web.Response(text=html, content_type='text/html')
             
-            # Rota de API
             async def handle_api(request):
                 return web.json_response({
                     "status": "online",
@@ -187,7 +145,6 @@ class KeepAliveServer:
                     "voz_conectada": self.bot.voz_conectada if self.bot else False
                 })
             
-            # Rota de health check
             async def handle_health(request):
                 return web.json_response({
                     "status": "healthy",
@@ -201,13 +158,12 @@ class KeepAliveServer:
             self.runner = web.AppRunner(self.app)
             await self.runner.setup()
             
-            # Usar porta do Render (10000) para site público
+            # Usar porta do Render (10000)
             port = int(os.environ.get('PORT', 10000))
             self.site = web.TCPSite(self.runner, '0.0.0.0', port)
             await self.site.start()
             
             print(f"🌐 Site público rodando na porta {port}")
-            print(f"   Acesse: https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost')}")
             
         except Exception as e:
             print(f"⚠️ Erro ao iniciar servidor: {e}")
@@ -220,6 +176,9 @@ class KeepAliveServer:
     
     def set_bot(self, bot):
         self.bot = bot
+
+# Criar a instância do keep_alive (ESTA LINHA ESTAVA FALTANDO!)
+keep_alive = KeepAliveServer()
 
 # ==================== COMANDOS PRINCIPAIS ====================
 
