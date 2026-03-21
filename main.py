@@ -46,53 +46,6 @@ class MeuBot(commands.Bot):
         
         self.canal_voz_id = 1479257448010350673  # ID do canal WaveX
         self.voz_conectada = False
-    
-    async def conectar_ao_canal_voz(self):
-        """Conecta automaticamente ao canal de voz ao iniciar"""
-        if not self.guilds:
-            return None
-        
-        # Forçar limpeza de conexões fantasmas
-        for voz in self.voice_clients:
-            if not voz.is_connected():
-                await voz.disconnect(force=True)
-        
-        # Verificar se realmente está conectado em algum lugar
-        for voz in self.voice_clients:
-            if voz.is_connected():
-                print(f"✅ Já estou conectado em {voz.channel.name} em {voz.guild.name}")
-                self.voz_conectada = True
-                return voz
-        
-        for guild in self.guilds:
-            canal = guild.get_channel(self.canal_voz_id)
-            if canal:
-                try:
-                    # Verificar novamente se não tem conexão neste servidor
-                    for voz in self.voice_clients:
-                        if voz.guild == guild and voz.is_connected():
-                            print(f"✅ Já conectado em {voz.channel.name} em {guild.name}")
-                            self.voz_conectada = True
-                            return voz
-                    
-                    print(f"🔊 Conectando a {canal.name} em {guild.name}...")
-                    voz = await canal.connect()
-                    self.voz_conectada = True
-                    print(f"✅ Conectado ao canal {canal.name} em {guild.name}")
-                    return voz
-                except discord.errors.ClientException as e:
-                    error_msg = str(e)
-                    if "Already connected" in error_msg:
-                        print(f"⚠️ Já conectado em {guild.name} (mas não detectado)")
-                        self.voz_conectada = True
-                    else:
-                        print(f"❌ Erro ao conectar: {error_msg}")
-                except Exception as e:
-                    print(f"❌ Erro ao conectar: {e}")
-        
-        print("❌ Canal WaveX não encontrado!")
-        self.voz_conectada = False
-        return None
 
 bot = MeuBot()
 
@@ -212,7 +165,6 @@ async def status_command(ctx):
     embed.add_field(name="📡 Ping", value=f"{round(bot.latency * 1000)}ms", inline=True)
     embed.add_field(name="🏠 Servidores", value=len(bot.guilds), inline=True)
     
-    # Verificação real de conexão
     if ctx.voice_client and ctx.voice_client.is_connected():
         embed.add_field(name="🔊 Voz", value=f"✅ Conectado em {ctx.voice_client.channel.name}", inline=False)
     else:
@@ -327,7 +279,10 @@ async def entrar_call(ctx):
     # Limpar conexões fantasmas
     for voz in bot.voice_clients:
         if not voz.is_connected():
-            await voz.disconnect(force=True)
+            try:
+                await voz.disconnect(force=True)
+            except:
+                pass
     
     # Verificar se já está conectado
     if ctx.voice_client and ctx.voice_client.is_connected():
@@ -343,14 +298,7 @@ async def entrar_call(ctx):
     try:
         await ctx.send(f"🔊 Conectando ao canal **{canal.name}**...")
         
-        # Desconectar forçado se houver conexão fantasma
-        if ctx.voice_client:
-            try:
-                await ctx.voice_client.disconnect(force=True)
-                await asyncio.sleep(1)
-            except:
-                pass
-        
+        # Conectar
         await canal.connect()
         bot.voz_conectada = True
         await ctx.send(f"✅ Conectado ao canal **{canal.name}**!")
@@ -358,7 +306,8 @@ async def entrar_call(ctx):
     except discord.errors.ClientException as e:
         error_msg = str(e)
         if "Already connected" in error_msg:
-            await ctx.send("⚠️ Parece que já estou conectado, mas não consigo detectar. Use `!sair` e `!voz_estado` para diagnosticar.")
+            await ctx.send("✅ Já estou conectado em algum canal!")
+            bot.voz_conectada = True
         else:
             await ctx.send(f"❌ Erro: {error_msg}")
     except Exception as e:
@@ -374,7 +323,7 @@ async def sair_call(ctx):
     
     try:
         canal_nome = ctx.voice_client.channel.name
-        await ctx.voice_client.disconnect(force=True)
+        await ctx.voice_client.disconnect()
         bot.voz_conectada = False
         await ctx.send(f"✅ Desconectado de **{canal_nome}**!")
     except Exception as e:
@@ -406,20 +355,14 @@ async def on_ready():
     for i, guild in enumerate(bot.guilds, 1):
         print(f"   {i}. {guild.name} - {guild.member_count} membros")
     
-    # Conectar à voz automaticamente (apenas uma vez)
-    print("\n🔊 Tentando conectar ao canal WaveX...")
-    await asyncio.sleep(2)
-    await bot.conectar_ao_canal_voz()
+    # Não conectar automaticamente - apenas comando manual
+    print("\n🔊 Para conectar à call, use o comando !entrar")
     
     # Status personalizado
-    status = f"!help | {len(bot.guilds)} servers"
-    if bot.voz_conectada:
-        status += " | 🔊"
-    
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.playing,
-            name=status
+            name=f"!help | {len(bot.guilds)} servers"
         )
     )
     
