@@ -470,6 +470,7 @@ async def carregar_modulos():
     modulos = [
         'modules.cargos_serv',
         'modules.voz',
+        'modules.staff_manager',
     ]
     
     for modulo in modulos:
