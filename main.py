@@ -46,6 +46,7 @@ class MeuBot(commands.Bot):
         
         self.canal_voz_id = 1479257448010350673  # ID do canal WaveX
         self.voz_conectada = False
+        self.keep_alive = None  # Referência para o servidor keep-alive
 
 bot = MeuBot()
 
@@ -96,6 +97,19 @@ class KeepAliveServer:
                         .info {{ text-align: left; margin: 20px 0; padding: 15px; background: #e3f2fd; border-radius: 10px; }}
                         .commands {{ text-align: left; margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 10px; }}
                         .commands code {{ background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-family: monospace; }}
+                        .termos-link {{
+                            display: inline-block;
+                            margin-top: 20px;
+                            padding: 10px 20px;
+                            background: #667eea;
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 10px;
+                            transition: background 0.3s;
+                        }}
+                        .termos-link:hover {{
+                            background: #764ba2;
+                        }}
                         footer {{ margin-top: 20px; color: #999; font-size: 12px; }}
                     </style>
                 </head>
@@ -123,6 +137,7 @@ class KeepAliveServer:
                             <code>!sair</code> - Sai da call<br>
                             <code>!call</code> - Status da call
                         </div>
+                        <a href="/termos" class="termos-link">📜 Ver Termos de Serviço</a>
                         <footer>
                             Desenvolvido para comunidade WaveX | {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
                         </footer>
@@ -158,12 +173,14 @@ class KeepAliveServer:
             self.runner = web.AppRunner(self.app)
             await self.runner.setup()
             
-            # Usar porta do Render (10000)
-            port = int(os.environ.get('PORT', 10000))
+            # Usar porta 10001 (alterada para não conflitar)
+            # Você pode mudar para qualquer porta disponível: 8080, 3000, 5000, etc.
+            port = int(os.environ.get('PORT', 10001))
             self.site = web.TCPSite(self.runner, '0.0.0.0', port)
             await self.site.start()
             
             print(f"🌐 Site público rodando na porta {port}")
+            print(f"📌 Acesse: http://localhost:{port} ou http://seu-dominio:{port}")
             
         except Exception as e:
             print(f"⚠️ Erro ao iniciar servidor: {e}")
@@ -177,7 +194,7 @@ class KeepAliveServer:
     def set_bot(self, bot):
         self.bot = bot
 
-# Criar a instância do keep_alive (ESTA LINHA ESTAVA FALTANDO!)
+# Criar a instância do keep_alive
 keep_alive = KeepAliveServer()
 
 # ==================== COMANDOS PRINCIPAIS ====================
@@ -212,6 +229,12 @@ async def help_command(ctx):
         value="`!entrar` - Entra na call WaveX\n"
               "`!sair` - Sai da call\n"
               "`!call` - Mostra status da call",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📜 Termos",
+        value="Acesse nossos termos em: **https://seu-dominio.com:10001/termos**",
         inline=False
     )
     
@@ -255,6 +278,35 @@ async def info_command(ctx):
     embed.add_field(name="📌 Versão", value="2.0.0", inline=True)
     embed.add_field(name="📚 Biblioteca", value=f"discord.py {discord.__version__}", inline=True)
     embed.add_field(name="⚙️ Prefixo", value="`!`", inline=True)
+    embed.add_field(name="📜 Termos", value="https://seu-dominio.com:10001/termos", inline=False)
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name="termos")
+async def termos_command(ctx):
+    """!termos - Envia o link dos termos de serviço"""
+    embed = discord.Embed(
+        title="📜 Termos de Serviço - WaveX",
+        description="Acesse nossos termos de serviço para saber mais sobre políticas, entregas, pagamentos e muito mais.",
+        color=discord.Color.purple()
+    )
+    
+    embed.add_field(
+        name="🔗 Link dos Termos",
+        value="**https://seu-dominio.com:10001/termos**\n\n_Substitua pelo seu domínio real_",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📌 Destaques",
+        value="• Política Antifraude\n"
+              "• Prazos de Entrega\n"
+              "• Garantia de 7 dias\n"
+              "• Taxas e Cobranças",
+        inline=False
+    )
+    
+    embed.set_footer(text="WaveX | Leia os termos antes de contratar nossos serviços")
     
     await ctx.send(embed=embed)
 
@@ -448,7 +500,7 @@ async def on_guild_join(guild):
         if channel.permissions_for(guild.me).send_messages:
             embed = discord.Embed(
                 title="👋 Obrigado por me adicionar!",
-                description="Use **!help** para ver todos os comandos!",
+                description="Use **!help** para ver todos os comandos!\n\n📜 **Termos de Serviço:** https://seu-dominio.com:10001/termos",
                 color=discord.Color.green()
             )
             await channel.send(embed=embed)
@@ -471,6 +523,7 @@ async def carregar_modulos():
         'modules.cargos_serv',
         'modules.voz',
         'modules.staff_manager',
+        'modules.Termos-site',  # Módulo de termos
     ]
     
     for modulo in modulos:
@@ -493,6 +546,7 @@ async def main():
     
     # Configurar keep-alive com o bot
     keep_alive.set_bot(bot)
+    bot.keep_alive = keep_alive  # Referência para o módulo de termos
     
     # Iniciar keep-alive
     try:
