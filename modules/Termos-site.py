@@ -13,9 +13,6 @@ import os
 class TermosSite:
     def __init__(self, bot):
         self.bot = bot
-        self.app = None
-        self.runner = None
-        self.site = None
     
     async def setup_routes(self, app):
         """Configurar rotas do site"""
@@ -44,7 +41,6 @@ class TermosSite:
                         min-height: 100vh;
                     }}
                     
-                    /* Header com imagem */
                     .hero {{
                         background: linear-gradient(135deg, rgba(106, 13, 173, 0.9) 0%, rgba(62, 13, 118, 0.95) 100%);
                         padding: 60px 20px;
@@ -76,14 +72,12 @@ class TermosSite:
                         color: #e0e0e0;
                     }}
                     
-                    /* Container principal */
                     .container {{
                         max-width: 1200px;
                         margin: 0 auto;
                         padding: 40px 20px;
                     }}
                     
-                    /* Seções */
                     .section {{
                         background: rgba(255, 255, 255, 0.05);
                         border-radius: 20px;
@@ -120,26 +114,6 @@ class TermosSite:
                         margin-bottom: 15px;
                     }}
                     
-                    .section-content ul {{
-                        list-style: none;
-                        padding-left: 20px;
-                    }}
-                    
-                    .section-content li {{
-                        margin-bottom: 10px;
-                        position: relative;
-                        padding-left: 25px;
-                    }}
-                    
-                    .section-content li:before {{
-                        content: "▹";
-                        color: #9b4dff;
-                        position: absolute;
-                        left: 0;
-                        font-weight: bold;
-                    }}
-                    
-                    /* Destaque para avisos importantes */
                     .warning {{
                         background: linear-gradient(135deg, rgba(255, 70, 70, 0.1) 0%, rgba(155, 77, 255, 0.1) 100%);
                         border-left: 4px solid #ff4646;
@@ -163,11 +137,6 @@ class TermosSite:
                         margin: 20px 0;
                     }}
                     
-                    .tax-box h3 {{
-                        color: #9b4dff;
-                        margin-bottom: 15px;
-                    }}
-                    
                     .tax-item {{
                         padding: 10px;
                         margin: 10px 0;
@@ -185,7 +154,6 @@ class TermosSite:
                         font-size: 1.1em;
                     }}
                     
-                    /* Footer */
                     .footer {{
                         text-align: center;
                         padding: 40px 20px;
@@ -202,14 +170,8 @@ class TermosSite:
                     .footer a {{
                         color: #9b4dff;
                         text-decoration: none;
-                        transition: color 0.3s ease;
                     }}
                     
-                    .footer a:hover {{
-                        color: #ffffff;
-                    }}
-                    
-                    /* Botão de voltar */
                     .back-button {{
                         display: inline-block;
                         background: linear-gradient(135deg, #9b4dff 0%, #6a0dad 100%);
@@ -220,37 +182,18 @@ class TermosSite:
                         margin-top: 20px;
                         font-weight: bold;
                         transition: transform 0.3s ease;
-                        border: none;
-                        cursor: pointer;
                     }}
                     
                     .back-button:hover {{
                         transform: scale(1.05);
                     }}
                     
-                    /* Responsividade */
                     @media (max-width: 768px) {{
-                        .hero h1 {{
-                            font-size: 2em;
-                        }}
-                        
-                        .section {{
-                            padding: 20px;
-                        }}
-                        
-                        .section-title {{
-                            font-size: 1.4em;
-                        }}
-                        
-                        .section-content {{
-                            padding-left: 15px;
-                        }}
-                        
-                        .tax-item {{
-                            flex-direction: column;
-                            align-items: flex-start;
-                            gap: 8px;
-                        }}
+                        .hero h1 {{ font-size: 2em; }}
+                        .section {{ padding: 20px; }}
+                        .section-title {{ font-size: 1.4em; }}
+                        .section-content {{ padding-left: 15px; }}
+                        .tax-item {{ flex-direction: column; align-items: flex-start; gap: 8px; }}
                     }}
                 </style>
             </head>
@@ -264,7 +207,6 @@ class TermosSite:
                 </div>
                 
                 <div class="container">
-                    <!-- Política Antifraude -->
                     <div class="section">
                         <h2 class="section-title">🛡️ Política Antifraude</h2>
                         <div class="section-content">
@@ -274,7 +216,6 @@ class TermosSite:
                         </div>
                     </div>
                     
-                    <!-- Entrega de Produtos -->
                     <div class="section">
                         <h2 class="section-title">🤖 Entrega de Produtos</h2>
                         <div class="section-content">
@@ -284,7 +225,6 @@ class TermosSite:
                         </div>
                     </div>
                     
-                    <!-- Pagamentos e Serviços -->
                     <div class="section">
                         <h2 class="section-title">💰 Pagamentos e Serviços</h2>
                         <div class="section-content">
@@ -295,7 +235,6 @@ class TermosSite:
                         </div>
                     </div>
                     
-                    <!-- Garantia e Suporte Inicial -->
                     <div class="section">
                         <h2 class="section-title">📌 Garantia e Suporte Inicial</h2>
                         <div class="section-content">
@@ -305,7 +244,6 @@ class TermosSite:
                         </div>
                     </div>
                     
-                    <!-- Uso e Conduta -->
                     <div class="section">
                         <h2 class="section-title">⚠️ Uso e Conduta</h2>
                         <div class="section-content">
@@ -315,7 +253,6 @@ class TermosSite:
                         </div>
                     </div>
                     
-                    <!-- Taxas e Cobranças -->
                     <div class="section">
                         <h2 class="section-title">🚨 Avisos Importantes (Taxas e Cobranças)</h2>
                         <div class="section-content">
@@ -344,7 +281,6 @@ class TermosSite:
                         </div>
                     </div>
                     
-                    <!-- Disposições Gerais -->
                     <div class="section">
                         <h2 class="section-title">📌 Disposições Gerais</h2>
                         <div class="section-content">
@@ -354,7 +290,6 @@ class TermosSite:
                         </div>
                     </div>
                     
-                    <!-- Botão de voltar -->
                     <div style="text-align: center; margin-top: 40px;">
                         <a href="/" class="back-button">🏠 Voltar para a página inicial</a>
                     </div>
@@ -363,13 +298,13 @@ class TermosSite:
                 <div class="footer">
                     <p>© 2024 WaveX - Todos os direitos reservados</p>
                     <p>Desenvolvido para a comunidade WaveX | Suporte via Discord</p>
-                    <p><a href="/termos">Termos de Serviço</a> | <a href="/api">API Status</a></p>
                 </div>
             </body>
             </html>
             """
             return web.Response(text=html, content_type='text/html')
         
+        # Registrar a rota /termos
         app.router.add_get('/termos', handle_termos)
         print("📄 Rota /termos configurada com sucesso!")
 
@@ -377,25 +312,23 @@ async def setup(bot):
     """Setup do módulo de termos"""
     termos_site = TermosSite(bot)
     
-    # Tentar obter o app do keep_alive existente
+    # Verificar se o bot tem o keep_alive e se ele já tem um app
     if hasattr(bot, 'keep_alive') and bot.keep_alive and bot.keep_alive.app:
         print("🔗 Conectando termos ao servidor keep-alive existente...")
         await termos_site.setup_routes(bot.keep_alive.app)
+        print("✅ Módulo Termos-site carregado com sucesso!")
     else:
         print("⚠️ Servidor keep-alive não encontrado. Criando servidor independente...")
         # Criar servidor independente se necessário
-        from aiohttp import web
         app = web.Application()
         await termos_site.setup_routes(app)
         
         runner = web.AppRunner(app)
         await runner.setup()
         
-        port = int(os.environ.get('PORT', 10000))
+        port = int(os.environ.get('PORT', 10001))
         site = web.TCPSite(runner, '0.0.0.0', port)
         await site.start()
         
         print(f"🌐 Site de termos rodando na porta {port}")
-        print(f"📄 Acesse: http://localhost:{port}/termos ou seu domínio/termos")
-    
-    print("✅ Módulo Termos-site carregado com sucesso!")
+        print(f"📄 Acesse: http://localhost:{port}/termos")
